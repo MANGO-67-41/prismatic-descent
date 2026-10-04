@@ -1,6 +1,6 @@
 extends SceneTree
 ## Dev tool: renders the HUD / inventory preview at 480x270 and saves it 3x (nearest).
-## Env: SHOT_OUT=path, SHOT_INV=1 (open inventory), SHOT_SEL=<slot index>, SHOT_STATE=full|hurt|low|max, SHOT_SHATTER=1
+## Env: SHOT_OUT=path, SHOT_INV=1 (open inventory), SHOT_SEL=<slot index>, SHOT_STATE=full|hurt|low|max, SHOT_SHATTER=1, SHOT_MAP=quick|full|full_low
 
 func _initialize() -> void:
 	var out := OS.get_environment("SHOT_OUT")
@@ -43,6 +43,15 @@ func _initialize() -> void:
 		var sel := int(OS.get_environment("SHOT_SEL"))
 		scene.inventory._sel = sel
 		scene.inventory._refresh()
+	match OS.get_environment("SHOT_MAP"):
+		"quick":
+			scene.world_map.press_quick()
+		"full":
+			scene.world_map.press_full()
+		"full_low":
+			scene.world_map.press_full()
+			scene.world_map._scroll = 999.0
+			scene.world_map.queue_redraw()
 	for _i in 60:
 		await process_frame
 	var img := vp.get_texture().get_image()

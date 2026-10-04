@@ -37,7 +37,6 @@ var _region: Label
 var _food_label: Label
 var _currency: Label
 var _abilities_label: Label
-var _hint: Label
 
 
 func _init() -> void:
@@ -63,8 +62,7 @@ func _ready() -> void:
 	_desc_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_desc_extra = _label("", small, Rect2(334, 190, 128, 14), HORIZONTAL_ALIGNMENT_LEFT)
 	_completion = _label("", small, Rect2(334, 214, 128, 14), HORIZONTAL_ALIGNMENT_LEFT)
-	_hint = _label("ARROWS OR MOUSE  MOVE        I OR ESC  CLOSE", small, Rect2(0, 244, 480, 14), HORIZONTAL_ALIGNMENT_CENTER)
-	for node in [_title_label, _vitality, _shards, _region, _food_label, _currency, _abilities_label, _desc_title, _desc_body, _desc_extra, _completion, _hint]:
+	for node in [_title_label, _vitality, _shards, _region, _food_label, _currency, _abilities_label, _desc_title, _desc_body, _desc_extra, _completion]:
 		add_child(node)
 
 

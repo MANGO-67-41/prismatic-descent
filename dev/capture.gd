@@ -17,7 +17,7 @@ func _initialize() -> void:
 		if fake.has(1):
 			SaveSlots.write(1, {"location": "THE OVERGROWTH", "percent": 12, "playtime": 4980, "max_health": 5, "health": 5, "currency": 230})
 		if fake.has(2):
-			SaveSlots.write(2, {"location": "RUSTED DEPTHS", "percent": 41, "playtime": 36420, "max_health": 7, "health": 4, "currency": 1876})
+			SaveSlots.write(2, {"location": "THE RUSTWORKS", "percent": 41, "playtime": 36420, "max_health": 7, "health": 4, "currency": 1876})
 	var vp := SubViewport.new()
 	vp.size = Vector2i(480, 270)
 	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS

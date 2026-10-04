@@ -4,30 +4,36 @@ extends RefCounted
 ## Each action has one rebindable key; arrow keys always also move left and right.
 
 const PATH := "user://bindings.cfg"
-const ACTIONS: Array[String] = ["move_left", "move_right", "jump", "dash", "pound", "eat", "interact", "inventory", "pause"]
+const ACTIONS: Array[String] = ["move_left", "move_right", "move_up", "jump", "dash", "pound", "eat", "interact", "inventory", "map", "full_map", "pause"]
 const LABELS := {
 	"move_left": "MOVE LEFT",
 	"move_right": "MOVE RIGHT",
+	"move_up": "CLIMB UP",
 	"jump": "JUMP / DOUBLE JUMP",
 	"dash": "DASH",
-	"pound": "GROUND POUND",
+	"pound": "POUND / CLIMB DOWN",
 	"eat": "EAT AND HEAL",
 	"interact": "INTERACT",
 	"inventory": "INVENTORY",
+	"map": "QUICK MAP",
+	"full_map": "FULL MAP",
 	"pause": "PAUSE",
 }
 const DEFAULTS := {
 	"move_left": KEY_A,
 	"move_right": KEY_D,
+	"move_up": KEY_W,
 	"jump": KEY_SPACE,
 	"dash": KEY_SHIFT,
 	"pound": KEY_S,
 	"eat": KEY_F,
 	"interact": KEY_E,
 	"inventory": KEY_I,
+	"map": KEY_TAB,
+	"full_map": KEY_M,
 	"pause": KEY_ESCAPE,
 }
-const FIXED := {"move_left": KEY_LEFT, "move_right": KEY_RIGHT, "pound": KEY_DOWN}
+const FIXED := {"move_left": KEY_LEFT, "move_right": KEY_RIGHT, "move_up": KEY_UP, "pound": KEY_DOWN}
 const RESERVED: Array[Key] = [KEY_ESCAPE, KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN]
 
 static var keys: Dictionary = {}

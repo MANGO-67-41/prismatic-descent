@@ -1,15 +1,17 @@
 extends Control
 ## UI preview: the in-game HUD and inventory over a placeholder background, driven by demo values.
-## There is no gameplay yet. Demo keys (H hurt, K hurt 2, J heal, G shard, T food, M scrap, R next
+## There is no gameplay yet. Demo keys (H hurt, K hurt 2, J heal, G shard, T food, C scrap, R next
 ## ability) only exist to try the UI and only work in debug builds (the editor), not in exports.
-## Esc closes the inventory, or returns to the title screen.
+## Tab shows the quick map, M the full map. Esc closes the inventory, or opens the pause menu (Continue / Options / Quit To Menu).
 
 const TITLE_SCENE := "res://scenes/ui/title_screen.tscn"
-const DEMO_KEYS: Array[Key] = [KEY_H, KEY_K, KEY_J, KEY_G, KEY_T, KEY_M, KEY_R]
+const DEMO_KEYS: Array[Key] = [KEY_H, KEY_K, KEY_J, KEY_G, KEY_T, KEY_C, KEY_R]
 
 var vitals := VitalsState.new()
 var hud: Hud
 var inventory: InventoryScreen
+var pause_menu: PauseMenu
+var world_map: WorldMap
 
 
 func _ready() -> void:
@@ -32,6 +34,14 @@ func _ready() -> void:
 	inventory = InventoryScreen.new()
 	add_child(inventory)
 	inventory.bind(vitals)
+	world_map = WorldMap.new()
+	add_child(world_map)
+	world_map.set_region(vitals.region)
+	world_map.opened.connect(_set_overlay_ui.bind(false))
+	world_map.closed.connect(_set_overlay_ui.bind(true))
+	pause_menu = PauseMenu.new()
+	add_child(pause_menu)
+	pause_menu.quit_to_menu.connect(_go_title)
 	inventory.opened.connect(_set_overlay_ui.bind(false))
 	inventory.closed.connect(_set_overlay_ui.bind(true))
 
@@ -51,6 +61,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	var handler: Callable
 	if event.is_action_pressed("inventory"):
 		handler = _toggle_inventory
+	elif event.is_action_pressed("map"):
+		handler = _press_map.bind(false)
+	elif event.is_action_pressed("full_map"):
+		handler = _press_map.bind(true)
 	elif event.is_action_pressed("ui_cancel"):
 		handler = _on_cancel
 	elif OS.is_debug_build() and event is InputEventKey and event.pressed and not event.echo \
@@ -63,16 +77,33 @@ func _unhandled_input(event: InputEvent) -> void:
 	handler.call()
 
 
+func _press_map(full: bool) -> void:
+	if inventory.is_open or pause_menu.is_open:
+		return
+	if full:
+		world_map.press_full()
+	else:
+		world_map.press_quick()
+
+
 func _toggle_inventory() -> void:
+	if world_map.is_full():
+		return
 	if inventory.is_open:
 		inventory.close()
 	else:
+		world_map.close()
 		inventory.open()
 
 
 func _on_cancel() -> void:
-	if not inventory.is_open:
-		get_tree().change_scene_to_file(TITLE_SCENE)
+	if not inventory.is_open and not pause_menu.is_open:
+		world_map.close()
+		pause_menu.open()
+
+
+func _go_title() -> void:
+	get_tree().change_scene_to_file(TITLE_SCENE)
 
 
 func _demo_key(keycode: Key) -> void:
@@ -87,7 +118,7 @@ func _demo_key(keycode: Key) -> void:
 			vitals.add_shard()
 		KEY_T:
 			vitals.eat(1)
-		KEY_M:
+		KEY_C:
 			vitals.add_currency(25)
 		KEY_R:
 			vitals.unlock_next()

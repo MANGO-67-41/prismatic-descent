@@ -49,12 +49,11 @@ func _initialize() -> void:
 	await process_frame
 	_check("click opens CONTROLS screen", scene._screen == 2)
 
-	# Keyboard: Down twice to JUMP, Enter starts capture, press K to bind.
+	# Keyboard: Down three times to JUMP (after MOVE LEFT, MOVE RIGHT, CLIMB UP), Enter starts capture, press K to bind.
 	scene._select(0)
-	vp.push_input(_key(KEY_S))
-	await process_frame
-	vp.push_input(_key(KEY_S))
-	await process_frame
+	for _n in 3:
+		vp.push_input(_key(KEY_S))
+		await process_frame
 	_check("S moves selection down to JUMP", scene._rows[scene._index]["id"] == "jump")
 	var accept := InputEventKey.new()
 	accept.physical_keycode = KEY_ENTER
@@ -144,6 +143,26 @@ func _initialize() -> void:
 	_check("inventory action defaults to I", KeyBindings.keys["inventory"] == KEY_I and InputMap.has_action("inventory"))
 	_check("ground pound and eat actions exist", InputMap.has_action("pound") and InputMap.has_action("eat"))
 
+	_check("quick map defaults to Tab, full map to M", KeyBindings.keys["map"] == KEY_TAB and KeyBindings.keys["full_map"] == KEY_M \
+			and InputMap.has_action("map") and InputMap.has_action("full_map"))
+	var wm := WorldMap.new()
+	vp.add_child(wm)
+	wm.set_region("THE RUSTWORKS")
+	_check("map knows the current region", wm.current_region == 1)
+	wm.set_region("NOWHERE")
+	_check("unknown region falls back to the first", wm.current_region == 0)
+	wm.press_quick()
+	_check("quick key shows the quick map", wm.mode == WorldMap.Mode.QUICK and wm.visible)
+	wm.press_full()
+	_check("full key opens the full map from the quick map", wm.is_full())
+	wm.press_quick()
+	_check("quick key closes the full map", wm.mode == WorldMap.Mode.CLOSED and not wm.visible)
+	wm.press_full()
+	wm.press_full()
+	_check("full key toggles the full map", wm.mode == WorldMap.Mode.CLOSED)
+	_check("the map covers the five regions and the 99 pieces of the real world", WorldMap.REGIONS.size() == 5 and WorldData.pieces.size() == 99)
+	wm.queue_free()
+
 	# Inventory: open, navigate, close.
 	var inv := InventoryScreen.new()
 	var vs := VitalsState.new()
@@ -208,6 +227,42 @@ func _initialize() -> void:
 	vp.push_input(esc)
 	await process_frame
 	_check("Esc closes the inventory and shows the HUD", not preview.inventory.is_open and preview.hud.visible)
+
+	# Pause menu: Esc opens it (and pauses), Options page works, settings change and restore, Esc closes.
+	var pause: PauseMenu = preview.pause_menu
+	vp.push_input(_key(KEY_ESCAPE))
+	await process_frame
+	_check("Esc opens the pause menu and pauses the tree", pause.is_open and paused)
+	_check("pause menu lists Continue, Options, Quit To Menu", pause._rows.size() == 3 and pause._rows[0]["id"] == "continue" and pause._rows[2]["id"] == "quit")
+	vp.push_input(_key(KEY_S))
+	await process_frame
+	var enter := InputEventKey.new()
+	enter.physical_keycode = KEY_ENTER
+	enter.keycode = KEY_ENTER
+	enter.pressed = true
+	vp.push_input(enter)
+	await process_frame
+	_check("Options opens the options page", pause._page == 1 and pause._rows.size() == 6)
+	pause._select(2)
+	for _n in 60:
+		await process_frame
+	_check("selector drop lands beside the highlighted Options row", pause._drop_pos.is_equal_approx(pause._selector_target(pause._rows[2])))
+	_check("underline has drawn to the full text width", is_equal_approx(pause._line_w, float(pause._rows[2]["width"])))
+	var music_before := SettingsStore.music
+	pause._index = 0
+	vp.push_input(_key(KEY_D))
+	await process_frame
+	var music_after := SettingsStore.music
+	_check("Right raises the music pips by one (or stays at the cap)", music_after == mini(music_before + 1, 10))
+	SettingsStore.music = music_before
+	SettingsStore.save_settings()
+	SettingsStore.apply()
+	vp.push_input(_key(KEY_ESCAPE))
+	await process_frame
+	_check("Esc on Options returns to the main page, still paused", pause._page == 0 and pause.is_open and paused)
+	vp.push_input(_key(KEY_ESCAPE))
+	await process_frame
+	_check("Esc on the main page resumes", not pause.is_open and not paused)
 
 	print("RESULT: %d failure(s)" % _failures)
 	quit(1 if _failures > 0 else 0)

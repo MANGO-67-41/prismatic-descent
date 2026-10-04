@@ -110,7 +110,7 @@ func _draw() -> void:
 	_diamond(Vector2(82, 27), 3, UITheme.CREAM_DIM)
 
 
-## Slot portrait: an emblem of the region the profile is currently in.
+## Slot portrait: an emblem of the region the profile is currently in (the five region names are final).
 ## Unknown regions fall back to a placeholder creature head (replace with the real hero art).
 func _draw_portrait(origin: Vector2) -> void:
 	var region := str(data.get("location", ""))
@@ -118,8 +118,14 @@ func _draw_portrait(origin: Vector2) -> void:
 	match region:
 		"THE OVERGROWTH":
 			backdrop = Color("222a1b")
-		"RUSTED DEPTHS":
+		"THE RUSTWORKS":
 			backdrop = Color("2a1a18")
+		"THE DROWNED WORKS":
+			backdrop = Color("0f1f24")
+		"THE BONE STACKS":
+			backdrop = Color("2a2620")
+		"THE ASH DEEP":
+			backdrop = Color("1c1420")
 		"THE PRISMATIC LAKE":
 			backdrop = Color("0f1b24")
 	draw_rect(Rect2(origin.x - 1, origin.y - 1, 28, 28), UITheme.INK)
@@ -127,8 +133,14 @@ func _draw_portrait(origin: Vector2) -> void:
 	match region:
 		"THE OVERGROWTH":
 			_emblem_vines(origin)
-		"RUSTED DEPTHS":
+		"THE RUSTWORKS":
 			_emblem_gear(origin)
+		"THE DROWNED WORKS":
+			_emblem_water(origin)
+		"THE BONE STACKS":
+			_emblem_ribs(origin)
+		"THE ASH DEEP":
+			_emblem_ash(origin)
 		"THE PRISMATIC LAKE":
 			_emblem_prism(origin)
 		_:
@@ -180,19 +192,86 @@ func _emblem_vines(origin: Vector2) -> void:
 		draw_rect(Rect2(origin.x + spore.x, origin.y + spore.y, 1, 1), leaf)
 
 
+## THE RUSTWORKS: two meshing gears in rust orange.
 func _emblem_gear(origin: Vector2) -> void:
-	var metal := Color("a8512d") if active else Color("7a3a28")
-	var centre := origin + Vector2(13, 13)
-	for dy in range(-9, 10):
-		for dx in range(-9, 10):
+	var metal := Color("d0743a") if active else Color("8a5230")
+	var dark := Color("7a3a28") if active else Color("5a2c20")
+	_gear(origin + Vector2(10, 11), 5.2, 3.2, 8, metal, dark)
+	_gear(origin + Vector2(20, 19), 3.6, 2.0, 6, metal, dark)
+	draw_rect(Rect2(origin.x + 2, origin.y + 24, 22, 2), dark)  # floor plate
+
+
+func _gear(centre: Vector2, outer: float, inner: float, teeth: int, colour: Color, hole: Color) -> void:
+	for dy in range(-int(outer) - 3, int(outer) + 4):
+		for dx in range(-int(outer) - 3, int(outer) + 4):
 			var dist := sqrt(dx * dx + dy * dy)
-			if dist >= 4.6 and dist <= 7.6:
-				draw_rect(Rect2(centre.x + dx, centre.y + dy, 1, 1), metal)
-	for tooth in 8:
-		var angle := tooth * TAU / 8.0
-		var tx := centre.x + roundi(cos(angle) * 9.0)
-		var ty := centre.y + roundi(sin(angle) * 9.0)
-		draw_rect(Rect2(tx - 1, ty - 1, 3, 3), metal)
+			if dist >= inner and dist <= outer:
+				draw_rect(Rect2(centre.x + dx, centre.y + dy, 1, 1), colour)
+	for tooth in teeth:
+		var angle := tooth * TAU / teeth
+		var tx := centre.x + roundi(cos(angle) * (outer + 1.2))
+		var ty := centre.y + roundi(sin(angle) * (outer + 1.2))
+		draw_rect(Rect2(tx - 1, ty - 1, 2, 2), colour)
+	draw_rect(Rect2(centre.x - 1, centre.y - 1, 2, 2), hole)
+	for spoke in 4:
+		var a := spoke * TAU / 4.0 + 0.4
+		draw_rect(Rect2(centre.x + roundi(cos(a) * inner * 0.7), centre.y + roundi(sin(a) * inner * 0.7), 1, 1), hole)
+
+
+## THE DROWNED WORKS: a dripping pipe over still water.
+func _emblem_water(origin: Vector2) -> void:
+	var teal := Color("56a3a6") if active else Color("3a7274")
+	var pale := Color("9ad8cc") if active else Color("6a9a92")
+	var deep := Color("2a6a6c") if active else Color("1f4a4c")
+	draw_rect(Rect2(origin.x + 2, origin.y + 3, 14, 3), teal)        # pipe
+	draw_rect(Rect2(origin.x + 13, origin.y + 3, 3, 8), teal)         # elbow down
+	draw_rect(Rect2(origin.x + 12, origin.y + 10, 5, 2), deep)        # spout
+	draw_rect(Rect2(origin.x + 2, origin.y + 3, 14, 1), pale)
+	draw_rect(Rect2(origin.x + 14, origin.y + 13, 1, 2), pale)        # drips
+	draw_rect(Rect2(origin.x + 14, origin.y + 17, 1, 1), pale)
+	for x in 26:                                                       # water
+		var wave := roundi(sin(x * 0.75) * 0.9)
+		draw_rect(Rect2(origin.x + x, origin.y + 19 + wave, 1, 1), pale)
+		for y in range(20, 26):
+			if (x + y) % 2 == 0 or y > 22:
+				draw_rect(Rect2(origin.x + x, origin.y + y + (1 if y == 20 else 0), 1, 1), teal if y < 24 else deep)
+	draw_rect(Rect2(origin.x + 11, origin.y + 21, 7, 1), pale)          # ripple under the drip
+
+
+## THE BONE STACKS: a spine with rib arches.
+func _emblem_ribs(origin: Vector2) -> void:
+	var bone := Color("d8c9a0") if active else Color("9a9078")
+	var dark := Color("6a6050") if active else Color("4e4638")
+	for k in 6:                                                          # vertebrae
+		draw_rect(Rect2(origin.x + 11, origin.y + 2 + k * 4, 4, 2), bone)
+		draw_rect(Rect2(origin.x + 12, origin.y + 4 + k * 4, 2, 2), dark)
+	for k in 4:                                                          # ribs: arcs sweeping out and down
+		var y0 := 5 + k * 4
+		var reach := 9 - k
+		for i in range(1, reach):
+			var drop := roundi(float(i * i) / (reach * 1.4))
+			draw_rect(Rect2(origin.x + 11 - i, origin.y + y0 + drop, 1, 1), bone if k % 2 == 0 else dark)
+			draw_rect(Rect2(origin.x + 14 + i, origin.y + y0 + drop, 1, 1), bone if k % 2 == 0 else dark)
+	draw_rect(Rect2(origin.x + 3, origin.y + 24, 20, 2), dark)
+
+
+## THE ASH DEEP: ash dunes with a glowing cinder and drifting embers.
+func _emblem_ash(origin: Vector2) -> void:
+	var ash := Color("a98bb0") if active else Color("75607a")
+	var dark := Color("46354f") if active else Color("33283a")
+	var ember := Color("e08a4a") if active else Color("a8602a")
+	var glow := Color("ffd9a0") if active else Color("c4986a")
+	for x in 26:                                                       # dunes
+		var h := 6 + roundi(sin(x * 0.42) * 2.0 + sin(x * 0.17) * 1.5)
+		draw_rect(Rect2(origin.x + x, origin.y + 26 - h, 1, h), dark)
+		draw_rect(Rect2(origin.x + x, origin.y + 26 - h, 1, 1), ash)
+	for row in [[1, 0], [1, 1], [3, 2], [3, 3], [5, 4], [7, 5], [7, 6], [5, 7], [3, 8]]:   # cinder: a teardrop flame
+		var half: int = row[0] / 2
+		draw_rect(Rect2(origin.x + 13 - half, origin.y + 4 + row[1], row[0], 1), ember)
+	draw_rect(Rect2(origin.x + 12, origin.y + 9, 3, 3), glow)
+	draw_rect(Rect2(origin.x + 13, origin.y + 8, 1, 1), Color.WHITE if active else glow)
+	for e: Vector2 in [Vector2(5, 11), Vector2(20, 9), Vector2(8, 5), Vector2(18, 3), Vector2(22, 14), Vector2(4, 17), Vector2(15, 1)]:
+		draw_rect(Rect2(origin.x + e.x, origin.y + e.y, 1, 1), ember)
 
 
 func _emblem_prism(origin: Vector2) -> void:

@@ -12,7 +12,7 @@ const PIPS := 10
 const TEXT_SIZE := 16
 const ROW_HEIGHT := 18
 const BAR_X := 292
-const PREVIEW_SCENE := "res://scenes/ui/ui_preview.tscn"
+const PREVIEW_SCENE := "res://scenes/game/game.tscn"
 
 
 ## Prismatic glimmer at the bottom of the shaft. The only saturated colour on screen.
@@ -413,8 +413,8 @@ func _show_screen(screen: int) -> void:
 		top = 88
 		pitch = 18
 	elif screen == Screen.CONTROLS:
-		top = 60
-		pitch = 15
+		top = 50
+		pitch = 12
 	elif screen == Screen.PROFILES:
 		top = 62
 		pitch = 42

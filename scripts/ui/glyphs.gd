@@ -211,3 +211,65 @@ static func draw_ability(ci: CanvasItem, id: String, centre: Vector2, lit: bool,
 			ci.draw_rect(Rect2(c.x, c.y - 6, 1, 2), tone)
 			ci.draw_rect(Rect2(c.x - 1, c.y - 1, 3, 1), Color("17101a"))
 			ci.draw_rect(Rect2(c.x, c.y - 2, 1, 3), Color("17101a"))
+
+
+# --- Pause menu ornaments -----------------------------------------------------------------
+
+
+## Ten discrete pips (volume), cream when filled, dark when empty.
+static func draw_pips(ci: CanvasItem, origin: Vector2, value: int, active: bool) -> void:
+	for i in 10:
+		var colour := UITheme.RUST_DARK
+		if i < value:
+			colour = UITheme.CREAM if active else UITheme.CREAM_DIM
+		ci.draw_rect(Rect2(origin.x + i * 7 - 1, origin.y - 1, 6, 9), UITheme.INK)
+		ci.draw_rect(Rect2(origin.x + i * 7, origin.y, 4, 7), colour)
+
+
+## Ornate line with curled ends, a centre diamond and small diamonds either side, like the
+## flourishes on Hollow Knight's pause menu. `emblem` adds a crystal rising above the centre.
+static func draw_flourish(ci: CanvasItem, cx: float, y: float, half: int, emblem: bool = false) -> void:
+	var line := UITheme.CREAM
+	for side in [-1, 1]:
+		var x0: float = cx + 7 if side == 1 else cx - half
+		ci.draw_rect(Rect2(x0, y, half - 7, 1), line)
+		ci.draw_rect(Rect2(x0, y + 1, half - 7, 1), UITheme.INK)
+		# curled end: rises, then hooks back toward the centre
+		var bx: float = cx + side * half - (1 if side == 1 else 0)
+		for k in 5:
+			ci.draw_rect(Rect2(bx, y - k, 1, 1), line)
+		for hook in [Vector2(1, -5), Vector2(2, -5), Vector2(3, -4), Vector2(3, -3)]:
+			ci.draw_rect(Rect2(bx - side * hook.x, y + hook.y, 1, 1), line)
+		for step in [14, 24]:
+			draw_diamond(ci, Vector2(cx + side * step, y), 1, line)
+	draw_diamond(ci, Vector2(cx, y), 3, line)
+	draw_diamond(ci, Vector2(cx, y), 1, UITheme.INK)
+	if emblem:
+		draw_crystal(ci, Vector2(cx - 4, y - 20), Crystal.FULL, 0.0, 1.0)
+		ci.draw_rect(Rect2(cx, y - 9, 1, 6), line)
+		for side in [-1, 1]:
+			for k in 7:
+				ci.draw_rect(Rect2(cx + side * (5 + k) - (1 if side == 1 else 0), y - 2 - k / 2, 1, 1), line)
+
+
+const DROP_SHAPE: Array[String] = ["00100", "01110", "01110", "11111", "11111", "11111", "01110"]
+
+
+## The menu selector: the same raindrop used on the title screen. `origin` is its top-left pixel.
+static func draw_drop(ci: CanvasItem, origin: Vector2, tint: Color) -> void:
+	for pass_index in 2:
+		for r in DROP_SHAPE.size():
+			for c in DROP_SHAPE[r].length():
+				if DROP_SHAPE[r][c] != "1":
+					continue
+				if pass_index == 0:
+					ci.draw_rect(Rect2(origin + Vector2(c - 1, r - 1), Vector2(3, 3)), UITheme.INK)
+				else:
+					ci.draw_rect(Rect2(origin + Vector2(c, r), Vector2.ONE), tint)
+
+
+## The hover line: 1px rust with an ink shadow, drawn `width` pixels wide from `origin`.
+static func draw_underline(ci: CanvasItem, origin: Vector2, width: float) -> void:
+	var w := int(width)
+	ci.draw_rect(Rect2(origin, Vector2(w, 1)), UITheme.RUST)
+	ci.draw_rect(Rect2(origin + Vector2(0, 1), Vector2(w, 1)), UITheme.INK)
