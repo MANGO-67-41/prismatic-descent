@@ -118,3 +118,11 @@ When the hero crosses into another region (and when a profile loads) the region'
 ## Shafts
 
 The shafts between rooms have no ledges. Each has one climbable rope (vine in the Overgrowth) down the middle that runs through the floor hole above and the ceiling hole below, so the way up and down is a straight climb (the earlier ledged versions are in `data/world_before_clearing_shafts/`). The junction checker (`dev/world_junctions.py`) models rope climbing and proves all 49 junctions work in both directions.
+
+## Ability effects
+
+Drawn in code in `scripts/game/ability_fx.gd` (no textures), all in the pale cream-lavender of the hero plus the prism hue:
+- **Ground pound:** on landing, two crescents race out along the floor and shrink, a flash line runs under them, short spark lines shoot up and dust kicks out both ways (0.45 s), with the small screen shake.
+- **Double jump:** Monarch-style wings sprout from the hero's back: solid feathered shapes with a scalloped trailing edge and an ink outline, raised then beaten down once (0.36 s), shedding a few drifting feathers. The far wing is smaller and shaded.
+- **Invincible dash:** a prismatic streamer ribbon (wide soft glow, two coloured edges, a white core) trails the hero and fades within 0.32 s, with a few sparks; the hero is tinted cool while untouchable.
+Preview all three: `dev/capture_fx.gd`.

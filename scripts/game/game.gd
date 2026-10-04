@@ -207,6 +207,7 @@ var _ceremony_tween: Tween
 
 
 func _on_pounded(at: Vector2) -> void:
+	AbilityFx.shockwave(self, at)
 	var n := world.break_cracks_at(at)
 	cam.shake(3.0 if n > 0 else 1.5)
 	if n > 0:

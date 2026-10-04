@@ -63,7 +63,7 @@ var _climb_moving := false
 var _dj_used := false
 var _pounding := false
 var _eat_t := 0.0
-var _ghost_t := 0.0
+var _streamer: AbilityFx.Streamer
 
 
 func _init() -> void:
@@ -159,14 +159,16 @@ func _physics_process(delta: float) -> void:
 		_dash_cool = DASH_COOLDOWN + DASH_TIME
 		_dash_used = not is_on_floor()
 	invincible = _dash_left > 0.0 and _has("dash_iframes")
+	if _dash_left <= 0.0 and _streamer != null and is_instance_valid(_streamer):
+		_streamer.finish()
+		_streamer = null
 	if _dash_left > 0.0:
 		_dash_left -= delta
 		velocity = Vector2(facing * DASH_V, 0.0)
-		if invincible:
-			_ghost_t -= delta
-			if _ghost_t <= 0.0:
-				_ghost_t = 0.03
-				_spawn_ghost()
+		if invincible and get_parent() != null:
+			if _streamer == null or not is_instance_valid(_streamer):
+				_streamer = AbilityFx.streamer(get_parent())
+			_streamer.add_point(global_position)
 		move_and_slide()
 		if is_on_wall():
 			_dash_left = 0.0
@@ -195,6 +197,7 @@ func _physics_process(delta: float) -> void:
 		velocity.y = -DOUBLE_JUMP_V
 		_dj_used = true
 		_buffer = 0.0
+		AbilityFx.wings(self, facing)
 		_sprite.play("jump")
 		_sprite.frame = 0
 	if velocity.y < 0.0 and not jump_held and _wall_lock <= 0.0:
@@ -260,23 +263,6 @@ func set_frozen(value: bool) -> void:
 	_dash_left = 0.0
 	_sprite.speed_scale = 1.0
 	_sprite.play("ascend" if value else "idle")
-
-
-## A fading copy of the current frame, tinted prismatic: the invincible dash's trail.
-func _spawn_ghost() -> void:
-	if get_parent() == null:
-		return
-	var g := Sprite2D.new()
-	g.texture = _sprite.sprite_frames.get_frame_texture(_sprite.animation, _sprite.frame)
-	g.centered = false
-	g.flip_h = _sprite.flip_h
-	g.global_position = global_position + _sprite.position
-	g.modulate = Color.from_hsv(fmod(_time * 1.5, 1.0) * 0.25 + 0.48, 0.55, 1.0, 0.7)
-	g.z_index = z_index - 1
-	get_parent().add_child(g)
-	var tw := g.create_tween()
-	tw.tween_property(g, "modulate:a", 0.0, 0.22)
-	tw.tween_callback(g.queue_free)
 
 
 func _try_eat(delta: float, dir: float) -> bool:
