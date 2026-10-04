@@ -1,0 +1,16 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# local dev screenshots
+.shots/
+
+# Private notes and local tooling: not published
+.claude/
+.playwright/
+.impeccable/
+GDD.md
+PRODUCT.md
+
+# Web export output
+build/
