@@ -1,20 +1,38 @@
 class_name ProfileRow
 extends Control
-## One save slot on the profile screen: ornate top line, numeral, portrait, health pips,
-## currency, location, completion and play time. An empty slot reads NEW GAME.
+## One save slot on the profile screen. Two lines and a rail: the first line is where the profile is (the region, in the large
+## type) and how far along it is (completion); the second is how it is doing (health pips, shards, play time); along the bottom
+## runs the descent rail, five segments, one per region: the regions already passed are lit, the one the profile is in is the
+## taller notch, the ones still below are dark. An empty slot reads NEW GAME over a dark rail. The selected row is lit by its
+## cursor: cream lines, a bracketed emblem, a bottom corner tick, a warm glow fading in from the cursor side and bright type;
+## the others sit back in dim type.
 
 const WIDTH := 360
 const HEIGHT := 38
+const TEXT_X := 78                   ## the text column, after the numeral and the emblem
+const RAIL_Y := 34
+const CLEAR_X := 224                 ## the CLEAR SAVE text (selected row): clear of the region name and of the percentage
+const REGIONS := ["THE OVERGROWTH", "THE RUSTWORKS", "THE DROWNED WORKS", "THE BONE STACKS", "THE ASH DEEP"]
 
 var slot := 1
 var data: Dictionary = {}
 var active := false
 
+var _glow := 0.0:                    ## how lit the row is (0 dim, 1 selected), eased over 0.14 s
+	set(v):
+		_glow = v
+		queue_redraw()
+var _glow_tween: Tween
 var _num_label: Label
+var _loc_label: Label
+var _pct_label: Label
+var _sub_label: Label
 var _clear_label: Label
 var _confirming := false
 var _num_dim: LabelSettings
 var _num_lit: LabelSettings
+var _big_dim: LabelSettings
+var _big_lit: LabelSettings
 var _clear_rust: LabelSettings
 var _clear_lit: LabelSettings
 
@@ -26,29 +44,47 @@ func setup(slot_number: int, summary: Dictionary) -> void:
 	size = Vector2(WIDTH, HEIGHT)
 	for child in get_children():
 		child.queue_free()
+	_loc_label = null
+	_pct_label = null
+	_sub_label = null
+	_clear_label = null
 	_num_dim = UITheme.label_settings(20, UITheme.CREAM_DIM, false, 0, 2)
 	_num_lit = UITheme.label_settings(20, UITheme.CREAM, false, 0, 2)
+	_big_dim = UITheme.label_settings(16, UITheme.CREAM_DIM)
+	_big_lit = UITheme.label_settings(16, UITheme.CREAM)
 	_clear_rust = UITheme.label_settings(12, UITheme.RUST, false, 1)
 	_clear_lit = UITheme.label_settings(12, UITheme.CREAM, false, 1)
-	var text_dim := UITheme.label_settings(16, UITheme.CREAM_DIM)
 	var small := UITheme.label_settings(12, UITheme.CREAM_DIM, false, 1)
 	_num_label = _text("%d." % slot, _num_dim, Rect2(8, 6, 30, 26), HORIZONTAL_ALIGNMENT_LEFT)
 	add_child(_num_label)
 	if data.is_empty():
-		add_child(_text("NEW GAME", text_dim, Rect2(60, 10, 200, 20), HORIZONTAL_ALIGNMENT_LEFT))
-		_clear_label = null
+		_loc_label = _text("NEW GAME", _big_dim, Rect2(TEXT_X, 3, 200, 18), HORIZONTAL_ALIGNMENT_LEFT)
+		add_child(_loc_label)
+		_sub_label = _text("THE DESCENT HAS NOT BEGUN", small, Rect2(TEXT_X, 20, 240, 14), HORIZONTAL_ALIGNMENT_LEFT)
+		add_child(_sub_label)
 	else:
-		add_child(_text(str(data["location"]), UITheme.label_settings(16, UITheme.CREAM), Rect2(WIDTH - 204, 3, 200, 18), HORIZONTAL_ALIGNMENT_RIGHT))
-		var stats := "%d%%     %s" % [int(data["percent"]), SaveSlots.format_time(int(data["playtime"]))]
-		add_child(_text(stats, small, Rect2(WIDTH - 204, 21, 200, 14), HORIZONTAL_ALIGNMENT_RIGHT))
-		add_child(_text(str(int(data["currency"])), small, Rect2(88, 20, 70, 14), HORIZONTAL_ALIGNMENT_LEFT))
-		_clear_label = _text("CLEAR SAVE", small, Rect2(150, 21, 110, 14), HORIZONTAL_ALIGNMENT_LEFT)
+		_loc_label = _text(str(data["location"]), _big_dim, Rect2(TEXT_X, 3, 200, 18), HORIZONTAL_ALIGNMENT_LEFT)
+		add_child(_loc_label)
+		_pct_label = _text("%d%%" % int(data["percent"]), _big_dim, Rect2(WIDTH - 84, 3, 80, 18), HORIZONTAL_ALIGNMENT_RIGHT)
+		add_child(_pct_label)
+		add_child(_text(SaveSlots.format_time(int(data["playtime"])), small, Rect2(WIDTH - 104, 20, 100, 14), HORIZONTAL_ALIGNMENT_RIGHT))
+		add_child(_text(str(int(data["currency"])), small, Rect2(_shards_x() + 8, 20, 70, 14), HORIZONTAL_ALIGNMENT_LEFT))
+		_clear_label = _text("CLEAR SAVE", small, Rect2(CLEAR_X, 3, 102, 14), HORIZONTAL_ALIGNMENT_LEFT)
 		add_child(_clear_label)
 	_apply_state()
 
 
 func set_active(value: bool) -> void:
+	if value == active and is_equal_approx(_glow, 1.0 if active else 0.0):
+		return
 	active = value
+	if _glow_tween:
+		_glow_tween.kill()
+	if is_inside_tree():
+		_glow_tween = create_tween()
+		_glow_tween.tween_property(self, "_glow", 1.0 if active else 0.0, 0.14).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	else:
+		_glow = 1.0 if active else 0.0
 	_apply_state()
 
 
@@ -61,13 +97,29 @@ func set_confirming(value: bool) -> void:
 func clear_rect() -> Rect2:
 	if _clear_label == null or not _clear_label.visible:
 		return Rect2()
-	return Rect2(position + Vector2(150, 19), Vector2(110, 16))
+	return Rect2(position + Vector2(CLEAR_X, 1), Vector2(96, 18))
+
+
+## Which region (0 to 4) the profile is in, 5 for the lake, -1 for an empty slot.
+func region_index() -> int:
+	if data.is_empty():
+		return -1
+	var at := REGIONS.find(str(data.get("location", "")))
+	return at if at >= 0 else (5 if str(data.get("location", "")) == "THE PRISMATIC LAKE" else 0)
+
+
+func _shards_x() -> int:
+	return TEXT_X + int(data.get("max_health", 6)) * Glyphs.CRYSTAL_PITCH + 6
 
 
 func _apply_state() -> void:
 	if _num_label == null:
 		return
 	_num_label.label_settings = _num_lit if active else _num_dim
+	if _loc_label:
+		_loc_label.label_settings = _big_lit if active else _big_dim
+	if _pct_label:
+		_pct_label.label_settings = _big_lit if active else _big_dim
 	if _clear_label:
 		_clear_label.visible = active
 		_clear_label.text = "CONFIRM ERASE" if _confirming else "CLEAR SAVE"
@@ -92,27 +144,70 @@ func _diamond(center: Vector2, radius: int, colour: Color) -> void:
 		draw_rect(Rect2(center.x - half, center.y + dy, half * 2 + 1, 1), colour)
 
 
+## Four corner ticks round `box` (each `n` long).
+func _brackets(box: Rect2, n: int, colour: Color) -> void:
+	var r := box.end - Vector2.ONE
+	for c in [[box.position.x, box.position.y, 1, 1], [r.x, box.position.y, -1, 1], [box.position.x, r.y, 1, -1], [r.x, r.y, -1, -1]]:
+		draw_rect(Rect2(c[0] if c[2] > 0 else c[0] - n + 1, c[1], n, 1), colour)
+		draw_rect(Rect2(c[0], c[1] if c[3] > 0 else c[1] - n + 1, 1, n), colour)
+
+
 func _draw() -> void:
 	var line := UITheme.CREAM_DIM if active else UITheme.RUST
+	# the glow: warm light that fades in from the cursor side (not a box: it has no edge of its own)
+	if _glow > 0.0:
+		for k in 14:
+			var t := k / 13.0
+			var a := 0.3 * _glow * minf(1.0, t / 0.14) * pow(1.0 - t, 1.5)       # fades in from the left edge and out to the right
+			for band in [[6, HEIGHT - 12, 1.0], [4, 2, 0.5], [HEIGHT - 6, 2, 0.5], [2, 2, 0.22], [HEIGHT - 4, 2, 0.22]]:
+				draw_rect(Rect2(k * 26, band[0], 26, band[1]), Color(UITheme.RUST, a * band[2]))     # and softly at the top and bottom
+	# the top line, with its corner tick and diamonds; lit rows add the matching tick at the bottom right
 	draw_rect(Rect2(0, 0, WIDTH, 1), line)
 	draw_rect(Rect2(0, 1, WIDTH, 1), UITheme.INK)
 	draw_rect(Rect2(0, 0, 1, 8), line)
 	draw_rect(Rect2(1, 7, 3, 1), line)
 	_diamond(Vector2(16, 0), 2, UITheme.CREAM if active else UITheme.CREAM_DIM)
 	_diamond(Vector2(WIDTH - 1, 0), 2, line)
+	if active:
+		draw_rect(Rect2(WIDTH - 1, HEIGHT - 8, 1, 8), line)
+		draw_rect(Rect2(WIDTH - 4, HEIGHT - 8, 3, 1), line)
+	_draw_portrait(Vector2(42, 6))
+	if active:
+		_brackets(Rect2(42 - 4, 6 - 4, 26 + 8, 26 + 8), 4, UITheme.CREAM)
+	_draw_rail()
 	if data.is_empty():
 		return
-	_draw_portrait(Vector2(42, 6))
 	var health := int(data["health"])
 	for i in int(data["max_health"]):
 		var mode: int = Glyphs.Crystal.FULL if i < health else Glyphs.Crystal.EMPTY
-		Glyphs.draw_crystal(self, Vector2(80 + i * Glyphs.CRYSTAL_PITCH, 7), mode, 0.0, 1.0 if active else 0.75)
-	_diamond(Vector2(82, 27), 3, UITheme.CREAM_DIM)
+		Glyphs.draw_crystal(self, Vector2(TEXT_X + i * Glyphs.CRYSTAL_PITCH, 20), mode, 0.0, 1.0 if active else 0.75)
+	_diamond(Vector2(_shards_x(), 27), 3, UITheme.CREAM if active else UITheme.CREAM_DIM)
+
+
+## The descent rail: five segments along the bottom of the row, one per region, a pixel of ink beneath. Regions passed are lit,
+## the current one is the taller notch, the ones still below are dark; an empty slot is all dark.
+func _draw_rail() -> void:
+	var here := region_index()
+	var seg := 54
+	for i in 5:
+		var x := TEXT_X + i * (seg + 2)
+		var lit := here >= 0 and i <= here
+		var now := i == here
+		var colour := UITheme.RUST_DARK
+		if lit:
+			colour = (UITheme.CREAM if now else UITheme.CREAM_DIM) if active else (UITheme.CREAM_DIM if now else UITheme.RUST)
+		var top := RAIL_Y - 1 if now else RAIL_Y
+		var h := 4 if now else 2
+		draw_rect(Rect2(x, top + h, seg, 1), UITheme.INK)
+		draw_rect(Rect2(x, top, seg, h), colour)
 
 
 ## Slot portrait: an emblem of the region the profile is currently in (the five region names are final).
 ## Unknown regions fall back to a placeholder creature head (replace with the real hero art).
 func _draw_portrait(origin: Vector2) -> void:
+	if data.is_empty():
+		_emblem_blank(origin)
+		return
 	var region := str(data.get("location", ""))
 	var backdrop := UITheme.RUST_DARK
 	match region:
@@ -297,3 +392,14 @@ func _emblem_creature(origin: Vector2) -> void:
 	draw_rect(Rect2(cx + 5, cy - 11, 3, 4), tone)
 	draw_rect(Rect2(cx - 5, cy - 2, 3, 4), UITheme.INK)
 	draw_rect(Rect2(cx + 3, cy - 2, 3, 4), UITheme.INK)
+
+
+## An empty slot's portrait: a dark frame with a dotted inner edge and a small diamond, waiting.
+func _emblem_blank(origin: Vector2) -> void:
+	draw_rect(Rect2(origin.x - 1, origin.y - 1, 28, 28), UITheme.INK)
+	draw_rect(Rect2(origin.x, origin.y, 26, 26), Color("17111a"))
+	var dot := UITheme.CREAM_DIM if active else UITheme.RUST_DARK
+	for k in range(2, 24, 2):
+		for p in [Vector2(k, 2), Vector2(k, 23), Vector2(2, k), Vector2(23, k)]:
+			draw_rect(Rect2(origin.x + p.x, origin.y + p.y, 1, 1), dot)
+	_diamond(origin + Vector2(13, 13), 3, UITheme.CREAM_DIM if active else UITheme.RUST)

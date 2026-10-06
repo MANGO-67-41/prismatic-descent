@@ -19,3 +19,6 @@ build/
 dev/world/
 dev/overgrowth/
 data/world_before_*/
+
+# macOS
+.DS_Store

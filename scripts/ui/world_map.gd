@@ -15,7 +15,7 @@ const S := WorldData.MAP_SCALE
 const QUICK_SECONDS := 3.0
 const FULL_TOP := 40.0
 const FULL_HEIGHT := 214.0
-const FULL_LEFT := 40.0
+const FULL_MAX_WIDTH := 400.0  ## the world is wider than this since the wings were added: the full map also scrolls sideways
 const ZOOM := 2.0
 const SCROLL_SPEED := 160.0
 const QUICK_RECT := Rect2(284, 8, 188, 82)
@@ -26,6 +26,7 @@ const REGIONS := [
 	{"name": "THE DROWNED WORKS", "colour": Color("56a3a6")},
 	{"name": "THE BONE STACKS", "colour": Color("d8c9a0")},
 	{"name": "THE ASH DEEP", "colour": Color("a98bb0")},
+	{"name": "THE PRISMATIC LAKE", "colour": Color("a8e0f0")},
 ]
 
 var mode := Mode.CLOSED
@@ -36,6 +37,7 @@ var discovered: Dictionary = {}  ## piece id -> true; while empty and unbound ev
 var bound := false
 
 var _scroll := 0.0
+var _scroll_x := 0.0
 var _quick_tween: Tween
 var _fade: Tween
 var _t := 0.0
@@ -123,6 +125,7 @@ func _open_full() -> void:
 	mode = Mode.FULL
 	visible = true
 	_scroll = clampf(roundf(player_pos.y / S * ZOOM - FULL_HEIGHT * 0.5), 0.0, _max_scroll())
+	_scroll_x = clampf(roundf(player_pos.x / S * ZOOM - _view_width() * 0.5), 0.0, _max_scroll_x())
 	_fade_in()
 	opened.emit()
 	queue_redraw()
@@ -138,6 +141,14 @@ func _fade_in() -> void:
 
 func _max_scroll() -> float:
 	return maxf(0.0, MAP_ART.get_height() * ZOOM - FULL_HEIGHT)
+
+
+func _view_width() -> float:
+	return minf(MAP_ART.get_width() * ZOOM, FULL_MAX_WIDTH)
+
+
+func _max_scroll_x() -> float:
+	return maxf(0.0, MAP_ART.get_width() * ZOOM - _view_width())
 
 
 func _known(i: int) -> bool:
@@ -171,6 +182,9 @@ func _process(delta: float) -> void:
 		var dir := Input.get_axis("ui_up", "ui_down")
 		if dir != 0.0:
 			_scroll_by(dir * SCROLL_SPEED * delta)
+		var side := Input.get_axis("ui_left", "ui_right")
+		if side != 0.0:
+			_scroll_x = clampf(_scroll_x + side * SCROLL_SPEED * delta, 0.0, _max_scroll_x())
 
 
 func _scroll_by(amount: float) -> void:
@@ -252,9 +266,10 @@ func _draw_full() -> void:
 	draw_string_outline(font, Vector2(0, 26), "MAP", HORIZONTAL_ALIGNMENT_CENTER, 480, 20, 2, UITheme.INK)
 	draw_string(font, Vector2(0, 26), "MAP", HORIZONTAL_ALIGNMENT_CENTER, 480, 20, UITheme.CREAM)
 	Glyphs.draw_divider(self, 240, 31, 96, true)
-	var width := MAP_ART.get_width() * ZOOM
-	var view := Rect2(FULL_LEFT, FULL_TOP, width, FULL_HEIGHT)
-	var origin := Vector2(0.0, roundf(_scroll) / ZOOM)
+	var width := _view_width()
+	var left := roundf((480.0 - width) * 0.5)
+	var view := Rect2(left, FULL_TOP, width, FULL_HEIGHT)
+	var origin := Vector2(roundf(_scroll_x) / ZOOM, roundf(_scroll) / ZOOM)
 	_draw_pieces(origin, view.position, ZOOM, view)
 	var small := UITheme.font(false, 1)
 	for i in WorldData.regions.size():
@@ -269,18 +284,22 @@ func _draw_full() -> void:
 		var y := FULL_TOP + float(region["y0"]) / S * ZOOM - roundf(_scroll)
 		var colour: Color = REGIONS[i]["colour"]
 		if y > FULL_TOP and y < FULL_TOP + FULL_HEIGHT - 4.0:
-			for x in range(int(FULL_LEFT), int(FULL_LEFT + width), 3):
+			for x in range(int(left), int(left + width), 3):
 				draw_rect(Rect2(x, y - 1, 1, 1), colour.darkened(0.2))
 		var ty := y + 11.0
 		if ty > FULL_TOP + 6.0 and ty < FULL_TOP + FULL_HEIGHT:
-			draw_string_outline(small, Vector2(FULL_LEFT + 4, ty), REGIONS[i]["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, 3, UITheme.INK)
-			draw_string(small, Vector2(FULL_LEFT + 4, ty), REGIONS[i]["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UITheme.CREAM if i == current_region else colour)
+			draw_string_outline(small, Vector2(left + 4, ty), REGIONS[i]["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, 3, UITheme.INK)
+			draw_string(small, Vector2(left + 4, ty), REGIONS[i]["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UITheme.CREAM if i == current_region else colour)
 	_draw_marks(origin, view.position, ZOOM, view)
 	_frame(view.grow(1), UITheme.RUST_DARK)
 	if _scroll > 0.5:
 		_chevron(Vector2(view.get_center().x, FULL_TOP - 6), -1)
 	if _scroll < _max_scroll() - 0.5:
 		_chevron(Vector2(view.get_center().x, FULL_TOP + FULL_HEIGHT + 6), 1)
+	if _scroll_x > 0.5:
+		_chevron_side(Vector2(left - 6, view.get_center().y), -1)
+	if _scroll_x < _max_scroll_x() - 0.5:
+		_chevron_side(Vector2(left + width + 6, view.get_center().y), 1)
 
 
 func _frame(rect: Rect2, colour: Color) -> void:
@@ -293,3 +312,8 @@ func _frame(rect: Rect2, colour: Color) -> void:
 func _chevron(centre: Vector2, dir: int) -> void:
 	for i in 3:
 		draw_rect(Rect2(centre.x - (3 - i), centre.y + dir * (i - 1), (3 - i) * 2 + 1, 1), UITheme.CREAM_DIM)
+
+
+func _chevron_side(centre: Vector2, dir: int) -> void:
+	for i in 3:
+		draw_rect(Rect2(centre.x + dir * (i - 1), centre.y - (3 - i), 1, (3 - i) * 2 + 1), UITheme.CREAM_DIM)

@@ -7,7 +7,7 @@ const HINTS := {
 	"pound": "IN THE AIR, PRESS %s",
 	"double_jump": "IN THE AIR, PRESS %s AGAIN",
 	"dash_iframes": "PRESS %s: NOTHING CAN TOUCH YOU MID-DASH",
-	"fast_heal": "HOLD %s TO EAT IN A HEARTBEAT",
+	"fast_heal": "HOLD %s WITH A FULL CIRCLE TO HEAL IN A HEARTBEAT",
 }
 const HINT_KEYS := {"pound": "pound", "double_jump": "jump", "dash_iframes": "dash", "fast_heal": "eat"}
 

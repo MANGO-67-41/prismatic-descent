@@ -72,7 +72,11 @@ static func read_progress(slot: int) -> Dictionary:
 		"rest_pos": Vector2(float(cfg.get_value("progress", "rx", 0.0)), float(cfg.get_value("progress", "ry", 0.0))),
 		"abilities": cfg.get_value("progress", "abilities", []),
 		"broken": cfg.get_value("progress", "broken", []),
-		"food": int(cfg.get_value("progress", "food", 4)),
+		"energy": float(cfg.get_value("progress", "energy", 0.0)),
+		"items": cfg.get_value("progress", "items", []),
+		"guardians": cfg.get_value("progress", "guardians", []),
+		"doors": cfg.get_value("progress", "doors", []),
+		"scrolls": cfg.get_value("progress", "scrolls", []),
 	}
 
 

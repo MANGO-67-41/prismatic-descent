@@ -1,11 +1,16 @@
 class_name Hud
 extends Control
-## In-game HUD, bottom-left: health crystals, food pips, currency.
-## Crystals shatter when hurt and regrow when healed. Bind it to a VitalsState.
+## In-game HUD, bottom-left, laid out like Rain World's: the energy circle on the left, round health pips beside it
+## (a divider marks where the crystals earned from shards begin), small cooldown dots above for ground pound and the
+## invincible dash once learned, currency below. Pips burst when hurt and swell back when healed. Bind it to a VitalsState.
 
 const MARGIN := Vector2(10, 10)
 const SHATTER_TIME := 0.42
 const REGROW_TIME := 0.5
+const PIP_PITCH := 14.0
+const PIP_R := 5.5
+
+var player: Player  ## optional: lets the HUD show ability cooldowns
 
 var state: VitalsState
 
@@ -77,27 +82,48 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	if state == null:
 		return
-	var origin := Vector2(MARGIN.x, size.y - MARGIN.y - 40.0)
-	# Crystals, with a slow pulse on the survivors when health is critical.
+	var base := Vector2(MARGIN.x, size.y - MARGIN.y)
+	var circle := base + Vector2(14, -18)
+	Glyphs.draw_energy(self, circle, 13.0, state.energy, _time, state.heal_progress)
 	var glow := 1.0
 	if state.health > 0 and state.health <= 2 and not SettingsStore.reduce_flashing:
 		glow = 0.55 + 0.45 * sin(_time * 3.0)
+	var row := Vector2(circle.x + 26.0, circle.y + 2.0)
+	var x := row.x
 	for i in state.max_health:
+		if i == VitalsState.BASE_HEALTH and state.max_health > VitalsState.BASE_HEALTH:
+			draw_rect(Rect2(x + 1.0, row.y - 9.0, 1, 18), UITheme.CREAM_DIM)    # divider: earned crystals beyond the base six
+			x += 6.0
 		var mode: int = _modes[i]
 		var t := 0.0
 		if mode == Glyphs.Crystal.SHATTER:
 			t = clampf(_clock[i] / SHATTER_TIME, 0.0, 1.0)
 		elif mode == Glyphs.Crystal.REGROW:
 			t = clampf(_clock[i] / REGROW_TIME, 0.0, 1.0)
-		Glyphs.draw_crystal(self, origin + Vector2(i * Glyphs.CRYSTAL_PITCH, 0), mode, t, glow)
-	# Food pips. An empty row pulses rust: starving.
-	var alarm := 0.0
-	if state.food == 0:
-		alarm = 0.5 + 0.5 * sin(_time * 2.0) if not SettingsStore.reduce_flashing else 1.0
-	var food_origin := origin + Vector2(1, 17)
-	for i in state.max_food:
-		Glyphs.draw_food_pip(self, food_origin + Vector2(i * Glyphs.FOOD_PITCH, 0), i < state.food, alarm)
-	# Currency.
-	var cur := origin + Vector2(4, 31)
-	Glyphs.draw_diamond(self, cur + Vector2(0, 3), 3, UITheme.CREAM_DIM)
-	_currency_label.position = Vector2(cur.x + 8, cur.y - 4)
+		Glyphs.draw_life_pip(self, Vector2(x + PIP_R, row.y), mode, t, glow, PIP_R)
+		x += PIP_PITCH
+	# cooldown dots above the pips (rust when spent, cream when ready), like Rain World's small row
+	if player != null:
+		var dx := row.x + 2.0
+		var dy := row.y - 15.0
+		for group in [["pound", Player.POUND_COOLDOWN, 4], ["dash_iframes", Player.IFRAME_COOLDOWN, 3]]:
+			if not bool(state.unlocked.get(group[0], false)):
+				continue
+			var ready := player.cooldown_fraction(group[0])
+			var n: int = group[2]
+			for k in n:
+				var lit := ready >= float(k + 1) / n
+				_dot(Vector2(dx, dy), lit, ready >= 1.0)
+				dx += 8.0
+			draw_rect(Rect2(dx - 2.0, dy - 4.0, 1, 7), UITheme.CREAM_DIM)
+			dx += 6.0
+	var cur := Vector2(row.x, row.y + 12.0)
+	Glyphs.draw_diamond(self, cur + Vector2(1, 3), 2, UITheme.CREAM_DIM)
+	_currency_label.position = Vector2(cur.x + 7, cur.y - 3)
+
+
+func _dot(c: Vector2, lit: bool, ready: bool) -> void:
+	var col := (UITheme.CREAM if ready else Color("e0806a")) if lit else UITheme.RUST_DARK
+	for dy in range(-2, 3):
+		var half := 2 - absi(dy) / 2
+		draw_rect(Rect2(c.x - half, c.y + dy, half * 2 + 1, 1), col if absi(dy) < 2 else UITheme.INK)

@@ -1,6 +1,7 @@
 class_name AreaTitle
 extends Control
-## The area name that appears in the bottom right corner when the hero crosses into another region:
+## The area name that appears in the bottom right corner when the hero crosses into another region (or wakes at a lantern, or walks
+## into a lantern shrine: then it reads LANTERN ROOM, in the region's colour):
 ## a small "NOW ENTERING" line, the name in the region's colour, and a line that draws out underneath. Fades after a few seconds.
 
 const HOLD := 3.2

@@ -21,7 +21,7 @@ func _initialize() -> void:
 		quit()
 		return
 	WorldData.ensure_loaded()
-	_check("world data loads 99 pieces and 5 regions", WorldData.pieces.size() == 99 and WorldData.regions.size() == 5)
+	_check("world data loads 131 pieces (101 + 30 wings) and 6 regions (with THE PRISMATIC LAKE)", WorldData.pieces.size() == 131 and WorldData.regions.size() == 6)
 	var game: Game = load("res://scenes/game/game.tscn").instantiate()
 	root.add_child(game)
 	await _frames(40)
@@ -48,13 +48,17 @@ func _initialize() -> void:
 	var tested := 0
 	for i in WorldData.pieces.size():
 		var p: Dictionary = WorldData.pieces[i]
-		if p["kind"] != "room":
+		if p["kind"] != "room" or bool(p.get("wing", false)):
 			continue
 		var at := Vector2(float(p["x"]) + float(p["entry"][0]), float(p["y"]) + 5.0 * 8.0)
+		game.vitals.health = game.vitals.max_health      # the creatures are real now: keep the hero whole for the sweep
+		game.player.grant_invincibility(10.0)
 		game.player.respawn_at(at)
 		game.world.update_focus(at, true)
 		await _frames(90)
 		var inside := WorldData.rect(i).grow(2.0).has_point(game.player.position)
+		if not inside and int(p["entry"][0]) == int(p["exit"][0]) and game.player.position.y > float(p["y"]) + float(p["h"]):
+			inside = true       # entry and exit share a column: nothing under the entry, so the hero drops straight on down the shaft
 		if not inside:
 			bad += 1
 			print("  room ", i, " ", p["name"], ": hero ended outside at ", game.player.position)
@@ -65,7 +69,7 @@ func _initialize() -> void:
 	var with_rope: Dictionary = {}
 	for i in WorldData.pieces.size():
 		var p2: Dictionary = WorldData.pieces[i]
-		if p2["kind"] == "room":
+		if p2["kind"] == "room" and not bool(p2.get("wing", false)):
 			var n: int = p2["ropes"].size()
 			if n < 2 or n > 3:
 				rope_ok = false
@@ -117,15 +121,19 @@ func _initialize() -> void:
 	_check("the ceremony ends and the hero can move again", not game.in_ceremony and not game.player.frozen and game.hud.visible)
 	await _frames(60)
 	_check("re-entering the region does not repeat it", not game.in_ceremony)
-	# --- ground pound breaks the cracked floor
-	var cracked := -1
+	# --- ground pound on the flat floor: no cracked floors are left, so it stops on the floor (and starts its cooldown)
+	var any_cracks := false
+	for pd in WorldData.pieces:
+		any_cracks = any_cracks or pd.get("cracks", []).size() > 0
+	_check("no room has cracked floor or a hole under it any more", not any_cracks)
+	var flat := -1
 	for i in WorldData.pieces.size():
-		if WorldData.pieces[i].get("cracks", []).size() > 0:
-			cracked = i
+		if str(WorldData.pieces[i]["kind"]) == "room" and int(WorldData.pieces[i]["w"]) == 960 and not bool(WorldData.pieces[i].get("wing", false)):
+			flat = i
 			break
-	var pc: Dictionary = WorldData.pieces[cracked]
-	var c0: Array = pc["cracks"][1]
-	var above := Vector2(float(pc["x"]) + float(c0[0]) * 8.0 + 4.0, float(pc["y"]) + float(c0[1]) * 8.0 - 40.0)
+	var pc: Dictionary = WorldData.pieces[flat]
+	var floor_py := float(pc["y"]) + float(int(pc["h"]) / 8 - 8) * 8.0
+	var above := Vector2(float(pc["x"]) + 28.0 * 8.0 + 4.0, floor_py - 40.0)
 	game.player.respawn_at(above)
 	game.world.update_focus(above, true)
 	await _frames(4)
@@ -133,8 +141,8 @@ func _initialize() -> void:
 	await _frames(2)
 	Input.action_release("pound")
 	await _frames(60)
-	_check("ground pound smashes the cracked floor", game.world.broken.size() > 0)
-	_check("the hero drops into the hidden pocket", game.player.position.y > float(pc["y"]) + float(c0[1]) * 8.0 + 4.0)
+	_check("ground pound lands on the floor and stays on it", absf(game.player.position.y - floor_py) < 3.0)
+	_check("ground pound has a 4 s cooldown", game.player.cooldown_fraction("pound") < 0.5)
 	# --- double jump goes higher than a single jump
 	game.vitals.unlocked["double_jump"] = true
 	game.player.respawn_at(floor_at_start)
@@ -161,12 +169,31 @@ func _initialize() -> void:
 	Input.action_release("dash")
 	await _frames(30)
 	_check("and only while dashing", not game.player.invincible)
+	Input.action_press("dash")
+	await _frames(3)
+	_check("a second dash within 3 s is not invincible", not game.player.invincible)
+	Input.action_release("dash")
+	await _frames(200)
+	Input.action_press("dash")
+	await _frames(3)
+	_check("after 3 s the dash is invincible again", game.player.invincible)
+	Input.action_release("dash")
+	await _frames(30)
+	# energy: fills over 30 s; a full circle heals one crystal
 	game.vitals.health = game.vitals.max_health - 1
-	game.vitals.food = 2
+	game.vitals.energy = 0.5
+	Input.action_press("eat")
+	await _frames(70)
+	_check("healing needs a full energy circle", game.vitals.health == game.vitals.max_health - 1)
+	Input.action_release("eat")
+	game.vitals.energy = 0.0
+	await _frames(60)
+	_check("the energy circle fills slowly (about 1/30 per second)", game.vitals.energy > 0.02 and game.vitals.energy < 0.05)
+	game.vitals.energy = 1.0
 	Input.action_press("eat")
 	await _frames(70)
 	Input.action_release("eat")
-	_check("holding EAT turns a food pip into a crystal", game.vitals.health == game.vitals.max_health and game.vitals.food == 1)
+	_check("holding HEAL with a full circle restores a crystal and empties it", game.vitals.health == game.vitals.max_health and game.vitals.energy < 0.05)
 	# shafts are clear: no ledges, one rope through the middle that climbs the whole way
 	var sh_ok := true
 	for i in WorldData.pieces.size():
@@ -183,6 +210,39 @@ func _initialize() -> void:
 	await _frames(190)
 	Input.action_release("move_up")
 	_check("holding up climbs the whole shaft to the room above (%.0f)" % (game.player.position.y - float(sp["y"])), game.player.position.y < float(sp["y"]) + 4.0)
+	# beams: thin bars out of the wall. Dropping onto one lands on its top edge, 4 px thick in the collision
+	var beam_pid := -1
+	for i in WorldData.pieces.size():
+		if (WorldData.pieces[i].get("beams", []) as Array).size() > 0 and WorldData.pieces[i]["kind"] == "room":
+			beam_pid = i
+			break
+	_check("the world has beams", beam_pid >= 0 and WorldData.pieces[beam_pid]["beams"].size() > 0)
+	if beam_pid >= 0:
+		var bp: Dictionary = WorldData.pieces[beam_pid]
+		var bb: Array = bp["beams"][0]
+		var over_beam := Vector2(float(bp["x"]) + (float(bb[0]) + float(bb[2]) / 2.0) * 8.0, float(bp["y"]) + float(bb[1]) * 8.0 - 30.0)
+		game.player.respawn_at(over_beam)
+		game.world.update_focus(over_beam, true)
+		await _frames(60)
+		var beam_top := float(bp["y"]) + float(bb[1]) * 8.0
+		_check("the hero lands on a beam's top edge (%.1f vs %.1f)" % [game.player.position.y, beam_top], game.player.is_on_floor() and absf(game.player.position.y - beam_top) < 1.5)
+	# the Prismatic Lake: no gift, nothing hostile, the temple's rest point heals
+	var lake := 100
+	var lp: Dictionary = WorldData.pieces[lake]
+	_check("the last room is THE PRISMATIC LAKE", lp["name"] == "PRISMATIC LAKE" and int(lp["region"]) == 5)
+	var rest_at := Vector2(float(lp["x"]) + float(lp["rest"][0][0]), float(lp["y"]) + float(lp["rest"][0][1]))
+	game.player.respawn_at(rest_at + Vector2(0, -4))
+	game.world.update_focus(rest_at, true)
+	await _frames(60)
+	_check("arriving at the lake gives no ability and starts no ceremony", not game.in_ceremony)
+	_check("the area name reads THE PRISMATIC LAKE", game.area_title.shown_name == "THE PRISMATIC LAKE")
+	game.vitals.health = 2
+	var ev := InputEventAction.new()
+	ev.action = "interact"
+	ev.pressed = true
+	Input.parse_input_event(ev)
+	await _frames(40)
+	_check("the temple's rest point heals fully", game.vitals.health == game.vitals.max_health)
 	_check("streaming keeps only nearby pieces loaded", game.world.loaded_count() < 12)
 	game.queue_free()
 	await process_frame

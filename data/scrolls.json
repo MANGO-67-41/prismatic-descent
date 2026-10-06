@@ -1,0 +1,140 @@
+{
+ "s01": {
+  "title": "THE WAY DOWN",
+  "pages": [
+   "Little one, the lake waits at the bottom of the world. Run with {move_left} and {move_right}. Jump with {jump}, and hold it to leap higher. Your bamboo stick swings with {attack}."
+  ]
+ },
+ "s02": {
+  "title": "WALLS AND ROPES",
+  "pages": [
+   "Press {jump} against a wall to leap away from it, again and again. Ropes and vines will carry you: {move_up} climbs, {pound} climbs down."
+  ]
+ },
+ "s03": {
+  "title": "THE DASH",
+  "pages": [
+   "Dash with {dash} to cross a wide gap. Touch ground or wall, and it comes back."
+  ]
+ },
+ "s04": {
+  "title": "A PLACE TO REST",
+  "pages": [
+   "Stand beside a resting lantern and press {interact} to mend your crystals. When you fall, you wake at the last one you rested by."
+  ]
+ },
+ "s05": {
+  "title": "A GATE, A KEY",
+  "pages": [
+   "Every region keeps a gate, and every gate wants a key. The key of the Overgrowth sleeps at the top of this ruin. Climb."
+  ]
+ },
+ "s06": {
+  "title": "THE FIRST GUARDIAN",
+  "pages": [
+   "A crystal guardian keeps this temple. Strike it with your bamboo stick ({attack}) and it reels for a moment, its heart bare. Fall upon the heart from above. When the ground shakes, jump ({jump})."
+  ]
+ },
+ "s07": {
+  "title": "FIVE GUARDIANS",
+  "pages": [
+   "Five crystal guardians keep the door to the lake, one in every region. Break them all, and the water will let you in."
+  ]
+ },
+ "s08": {
+  "title": "GROUND POUND",
+  "pages": [
+   "Press {pound} in the air to fall like a stone. A guardian's heart breaks twice as fast when you land on it."
+  ]
+ },
+ "s09": {
+  "title": "THE RUSTWORKS",
+  "pages": [
+   "Iron remembers the hands that bent it. A guardian sleeps deeper in the foundry. Find its temple, and the key that is kept beside it."
+  ]
+ },
+ "s10": {
+  "title": "THE SECOND KEY",
+  "pages": [
+   "Climb the broken beams. The key of the Rustworks waits at the very top, where the roof used to be."
+  ]
+ },
+ "s11": {
+  "title": "THE SECOND GUARDIAN",
+  "pages": [
+   "This one calls the ceiling down. Watch the floor: a light shows where each shard will land."
+  ]
+ },
+ "s12": {
+  "title": "DOUBLE JUMP",
+  "pages": [
+   "Press {jump} again in the air for one more leap. Use it to reach what a single jump cannot."
+  ]
+ },
+ "s13": {
+  "title": "THE DROWNED WORKS",
+  "pages": [
+   "The water rose and kept everything it was given. Another guardian waits in a temple the tide has not yet taken."
+  ]
+ },
+ "s14": {
+  "title": "THE THIRD KEY",
+  "pages": [
+   "Rest your jump ({jump}) between ledges, and do not look down. The key of the Drowned Works is high and dry."
+  ]
+ },
+ "s15": {
+  "title": "THE THIRD GUARDIAN",
+  "pages": [
+   "It is quicker than the last two. Stay in the air when it strikes, and come down on its heart."
+  ]
+ },
+ "s16": {
+  "title": "UNTOUCHABLE DASH",
+  "pages": [
+   "Nothing can hurt you while you dash ({dash}). Once it has been used, it needs three breaths to return."
+  ]
+ },
+ "s17": {
+  "title": "THE BONE STACKS",
+  "pages": [
+   "Whatever lived here was large. A guardian keeps the temple at the heart of the stacks, and a key rests in the ribs above."
+  ]
+ },
+ "s18": {
+  "title": "THE FOURTH KEY",
+  "pages": [
+   "The way up is made of old bones and fewer handholds than you would like. The key of the Bone Stacks is at the top."
+  ]
+ },
+ "s19": {
+  "title": "THE FOURTH GUARDIAN",
+  "pages": [
+   "It strikes in pairs. Dash ({dash}) through the second strike and fall upon its heart."
+  ]
+ },
+ "s20": {
+  "title": "HEAL IN A HEARTBEAT",
+  "pages": [
+   "Hold {eat} with a full circle to mend a crystal at once, instead of in a long and dangerous moment."
+  ]
+ },
+ "s21": {
+  "title": "THE ASH DEEP",
+  "pages": [
+   "Nothing grows here anymore. The last guardian keeps the last temple. When it falls, the lake's seal will open."
+  ]
+ },
+ "s22": {
+  "title": "THE LAST GUARDIAN",
+  "pages": [
+   "It knows everything the others knew. You know it too. Take your time, and take the heart."
+  ]
+ },
+ "s23": {
+  "title": "THE LAKE",
+  "pages": [
+   "Past the seal, the water is calm and nothing there will hurt you. Rest while you can."
+  ]
+ }
+}

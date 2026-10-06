@@ -33,6 +33,9 @@ THEMES = {
  "bone": dict(sky=["dccfb2", "bcae94", "948672", "6c6058", "4c424a", "34303c", "24222e", "181820"], tint="2a2a30", haze=("4c424a", "181820"),
      moss_bg="a8a080", canopy=("5a5448", "383430"), body=("3a342f", "463f38", "22201e"), moss=(("a8a080", "d8d0b0"), ("8a8468", "c0b894")),
      vine=("4a4438", "8a8468"), grass=("2a2822", "3a3830"), rim="b9a888", extra="ribs", gears=0, canopy_n=.35),
+ "lake": dict(sky=["3a3466", "2e2a58", "25224a", "1d1b3e", "171632", "121228", "0e0e20", "0a0a18"], tint="2a3a5a", haze=("2e2a58", "0a0a18"),
+     moss_bg="7ab0c0", canopy=("2a3a50", "182434"), body=("1a1828", "221f33", "100e1a"), moss=(("6aa8b8", "a8e0e8"), ("5a98b0", "98d8e8")),
+     vine=("2a4a58", "7ab8c8"), grass=("141a2a", "1e2a3a"), rim="8ab0d0", extra="lake", gears=0, canopy_n=0.0, scenery="cavern"),
  "ash": dict(sky=["6a3a50", "52304a", "3c2440", "2c1a34", "20142a", "160e20", "100a18", "0a060e"], tint="2a1020", haze=("3c2440", "0a060e"),
      moss_bg="6a4a50", canopy=("3a2a38", "20141e"), body=("1c1420", "251a28", "100a14"), moss=(("6a4a58", "9a6a70"), ("5a3a48", "8a5a64")),
      vine=("2a1a26", "5a3a48"), grass=("160e18", "22141e"), rim="7a4a5a", extra="embers", gears=1, canopy_n=.3),
@@ -203,7 +206,44 @@ def floor_top(r):
             return ty * TILE
     return r.H - 40
 
+def cavern_background(cv, r, rng):
+    """The Prismatic Lake: a vast cave lit from below by the lake. Distant rock, giant crystal columns, light motes."""
+    for y in range(cv.H):
+        t = y / cv.H
+        for x in range(cv.W):
+            cv.p[y][x] = sky_at(r, x, int(cv.H * (1 - t) * 0.9))        # darker above, lit near the water
+    def column(cx, base, w, h, hue, shade):
+        for y in range(max(0, base - h), min(cv.H, base)):
+            top = base - h
+            taper = min(1.0, (y - top) / max(1, w * 0.8))
+            half = int(w / 2 * taper)
+            for x in range(cx - half, cx + half + 1):
+                if 0 <= x < cv.W:
+                    face = (x - cx) / max(1, half)
+                    v = 0.55 + 0.25 * (1 - abs(face)) if face < 0.15 else 0.4
+                    c = hsv(hue + face * 0.03, 0.35, v * shade)
+                    cv.p[y][x] = lerp(cv.p[y][x], c, 0.55 * shade)
+            if 0 <= cx - half < cv.W: cv.p[y][max(0, cx - half)] = lerp(cv.p[y][max(0, cx - half)], hsv(hue, 0.25, 0.95), 0.4 * shade)
+    for layer, (count, shade) in enumerate(((10, 0.55), (6, 0.85))):
+        for _ in range(count * r.sw):
+            cx = rng.randint(0, cv.W); w = rng.randint(14, 30) * (layer + 1) // 2 + 6; h = rng.randint(80, cv.H - 40)
+            column(cx, cv.H - 40, w, h, rng.uniform(0.5, 0.8), shade)
+        fog_band(cv, r, cv.H // 3, cv.H, 0.5)
+    # stalactites from the ceiling
+    for _ in range(14 * r.sw):
+        x = rng.randint(0, cv.W); L = rng.randint(10, 60); w = rng.randint(3, 8)
+        for y in range(L):
+            hw = int(w * (1 - y / L))
+            for xx in range(x - hw, x + hw + 1):
+                if 0 <= xx < cv.W and y < cv.H: cv.p[y][xx] = lerp(cv.p[y][xx], hexc("0c0a16"), 0.7)
+    # light motes
+    for _ in range(cv.W * cv.H // 700):
+        x, y = rng.randint(0, cv.W - 1), rng.randint(0, cv.H - 1)
+        cv.p[y][x] = hsv(rng.uniform(0.45, 0.85), 0.35, 1.0)
+
 def background(cv, r, rng):
+    if TH.get("scenery") == "cavern":
+        return cavern_background(cv, r, rng)
     d = r.depth
     for y in range(cv.H):
         for x in range(cv.W): cv.p[y][x] = sky_at(r, x, y)
@@ -251,6 +291,7 @@ def background(cv, r, rng):
 
 # ---------------------------------------------------------------- terrain
 JIT_AMP = 3
+BEAM_H = 4   # pixels thick; the same number is the collision height in world.gd
 def solid_masks(r):
     seed = r.seed
     def grid(k):
@@ -263,6 +304,9 @@ def solid_masks(r):
         for x in range(r.W):
             tx, ty = x // TILE, y // TILE
             if metal[ty][tx]: mask[y][x] = 2; continue
+            if r.kind[ty][tx] == 4:                  # beam: a thin bar sprouting from the wall, the top half of its tile
+                if y % TILE < BEAM_H: mask[y][x] = 2
+                continue
             xx = min(r.W - 1, max(0, x + dx[y])); yy = min(r.H - 1, max(0, y + dy[x]))
             if rock[yy // TILE][xx // TILE]: mask[y][x] = 1
     return mask
@@ -320,6 +364,21 @@ def paint_terrain(cv, r, mask, rng):
                 if k == 1 and hsh(x, y, 17) < .1:
                     cv.px(x + (1 if not mask[y][x + 1] else -1), y, moss)
     return unders
+
+def beam_drips(cv, r, rng):
+    """Short dark moss threads hanging from the underside of every beam, so a thin bar reads as grown, not placed."""
+    moss = lerp(hexc(TH["moss"][0][0]), hexc(TH["moss"][1][0]), r.depth)
+    for ty in range(r.th):
+        for tx in range(r.tw):
+            if r.kind[ty][tx] != 4: continue
+            y0 = ty * TILE + BEAM_H
+            for x in range(tx * TILE, tx * TILE + TILE):
+                h = hsh(x, ty, r.seed + 41)
+                if h < .34:
+                    L = 2 + int(hsh(x, ty, r.seed + 43) * 7)
+                    for m in range(L):
+                        cv.px(x, y0 + m, moss if m % 3 else lerp(moss, INK, .5))
+                elif h < .5: cv.px(x, y0, lerp(moss, INK, .4))
 
 def vines(cv, r, mask, unders, rng):
     ends = []
@@ -408,6 +467,8 @@ def extras(cv, r, mask, rng):
             x = rng.randint(4, r.W - 4); y0 = rng.randint(4, max(5, level - 10))
             if not mask[y0][x]:
                 for m in range(rng.randint(4, 12)): cv.px(x, y0 + m, hexc("9ad8cc"))
+    elif kind == "lake":
+        lake_extras(cv, r, mask, rng)
     elif kind == "embers":
         for _ in range(r.W * r.H // 600):
             x, y = rng.randint(0, r.W - 1), rng.randint(0, r.H - 1)
@@ -428,6 +489,99 @@ def extras(cv, r, mask, rng):
                 px_, py_ = x + int(math.sin(m * .4) * 3), y - m
                 if 0 <= py_ < r.H and not mask[py_][px_] and dith(.4, px_, py_): cv.p[py_][px_] = lerp(cv.p[py_][px_], hexc("d8c0a0"), .3)
 
+def roof(cv, cx, y, hw, h, tile, hi, edge):
+    """A pagoda roof: ridge on top, eaves sweeping out and lifting at the tips."""
+    for x in range(-hw, hw + 1):
+        u = abs(x) / hw
+        bottom = y - int(round(7 * u ** 3))            # tips curl up
+        top = y - int(round(h * (1 - u ** 1.6))) - int(round(7 * u ** 3)) - 2
+        for yy in range(top, bottom + 1):
+            c = tile if (x // 3) % 2 == 0 else lerp(tile, INK, 0.25)
+            if yy <= top + 1: c = hi
+            cv.px(cx + x, yy, c)
+        cv.px(cx + x, bottom + 1, edge); cv.px(cx + x, bottom + 2, lerp(edge, INK, 0.5))
+    for s_ in (-1, 1):                                   # little curled tips
+        tx = cx + s_ * hw; ty = y - 8
+        cv.px(tx, ty, edge); cv.px(tx + s_, ty - 1, edge); cv.px(tx + s_, ty - 2, edge)
+
+def pagoda(cv, cx, base):
+    wall, wall_d = hexc("d8d0c0"), hexc("a8a090"); wood = hexc("4a2a22"); red = hexc("a8402e"); red_d = hexc("6e2a20")
+    tile, tile_hi, gold = hexc("2e3a4a"), hexc("5a6e86"), hexc("c8a24a")
+    y = base
+    tiers = [(86, 70, 124, 26), (68, 54, 100, 22), (52, 44, 78, 18)]  # body half-width, body height, roof half-width, roof height
+    for i, (bw, bh, rw, rh) in enumerate(tiers):
+        cv.rect(cx - bw - 2, y - 3, bw * 2 + 4, 3, wood)                    # floor beam
+        cv.rect(cx - bw, y - bh, bw * 2, bh - 3, wall)
+        cv.rect(cx - bw, y - bh, bw * 2, 2, wall_d)
+        for px_ in range(cx - bw, cx + bw + 1, max(10, bw // 3)):          # vermilion pillars
+            cv.rect(px_ - 2, y - bh, 4, bh - 3, red); cv.rect(px_ + 1, y - bh, 1, bh - 3, red_d)
+        if i == 0:                                                           # glowing doorway
+            cv.rect(cx - 15, y - 44, 30, 41, wood)
+            for yy in range(y - 42, y - 3):
+                for xx in range(cx - 13, cx + 13):
+                    cv.px(xx, yy, hsv(0.5 + (yy - y) * 0.004 + (xx - cx) * 0.004, 0.35, 0.95 - (y - yy) * 0.008))
+        else:                                                                # lattice windows
+            for wx in (cx - bw // 2, cx + bw // 2):
+                cv.rect(wx - 6, y - bh + 8, 12, bh - 18, wood)
+                for k in range(3):
+                    cv.rect(wx - 5 + k * 4, y - bh + 9, 1, bh - 20, hexc("e8c87a"))
+        y -= bh
+        roof(cv, cx, y + 2, rw, rh, tile, tile_hi, gold)
+        y -= rh - 2
+    cv.rect(cx - 1, y - 30, 3, 30, gold)                                     # spire with rings and a prism jewel
+    for k in range(5): cv.rect(cx - 4, y - 8 - k * 5, 9, 2, gold)
+    for dy in range(-4, 5):
+        for dx in range(-(4 - abs(dy)), 5 - abs(dy)): cv.px(cx + dx, y - 36 + dy, hsv(0.52 + dy * 0.03, 0.5, 1.0))
+
+def torii(cv, x, base):
+    red, red_d, black = hexc("b0402e"), hexc("6e2a20"), hexc("1a1214")
+    h = 92
+    for px_ in (x - 34, x + 30):
+        cv.rect(px_, base - h, 6, h, red); cv.rect(px_ + 4, base - h, 2, h, red_d); cv.rect(px_ - 1, base - 6, 8, 6, black)
+    cv.rect(x - 40, base - h + 14, 82, 5, red)                               # nuki
+    for xx in range(-50, 53):                                                # kasagi, lifting at the ends
+        lift = int(round(4 * (abs(xx) / 50) ** 2))
+        cv.rect(x + xx, base - h - lift, 1, 6, black if True else red)
+        cv.px(x + xx, base - h - lift + 6, red)
+    cv.rect(x - 3, base - h + 4, 6, 10, red)
+
+def lantern(cv, x, base):
+    stone, stone_d, glow = hexc("8a8478"), hexc("5a5650"), hexc("ffd9a0")
+    cv.rect(x - 4, base - 4, 9, 4, stone_d); cv.rect(x - 1, base - 14, 3, 10, stone)
+    cv.rect(x - 4, base - 20, 9, 6, stone); cv.rect(x - 2, base - 19, 5, 4, glow)
+    cv.rect(x - 6, base - 23, 13, 3, stone_d); cv.px(x, base - 25, stone)
+
+def lake_extras(cv, r, mask, rng):
+    m = getattr(r, "lake", None)
+    if not m: return
+    (wx0, wx1, wy0, wy1) = m["water"]
+    for y in range(wy0, wy1):
+        for x in range(wx0, wx1):
+            if mask[y][x]: continue
+            band = math.sin(x * 0.05 + y * 0.6) * 0.5 + 0.5
+            hue = 0.5 + 0.3 * ((x - wx0) / max(1, wx1 - wx0)) + 0.05 * band
+            v = 0.85 - 0.5 * (y - wy0) / max(1, wy1 - wy0)
+            c = hsv(hue, 0.45, v)
+            if (y - wy0) < 2 or (dith(0.12, x, y) and band > 0.8): c = lerp(c, CREAM, 0.6)
+            cv.p[y][x] = c
+    (bx0, bx1, by) = m["bridge"]                                              # planks and railing over the walkway
+    for x in range(bx0, bx1):
+        cv.px(x, by, hexc("a8643a")); cv.px(x, by + 1, hexc("6a3a26"))
+        for yy in range(by + 2, by + 8): cv.px(x, yy, hexc("4a2618") if x % 6 else hexc("6a3a26"))
+        if (x - bx0) % 24 == 0:
+            cv.rect(x, by - 12, 2, 12, hexc("8a4a2e"))
+        cv.px(x, by - 11, hexc("b0402e"))
+    torii(cv, m["torii"][0], m["torii"][1])
+    pagoda(cv, m["temple"][0], m["temple"][1])
+    for lx in m["lanterns"]: lantern(cv, lx, m["temple"][1])
+    for (cx, cy, sz) in m["crystals"]:                                         # glowing crystal clusters on the rock
+        for k in range(3):
+            hgt = sz - k * 3; ox = (k - 1) * (sz // 3)
+            for yy in range(hgt):
+                hw = max(0, int((hgt - yy) / hgt * 3))
+                for xx in range(-hw, hw + 1):
+                    cv.px(cx + ox + xx, cy - yy, hsv(0.5 + k * 0.1 + xx * 0.02, 0.4, 0.95 if xx < 0 else 0.75))
+
 def collision_overlay(cv, r, mask):
     for y in range(1, r.H - 1):
         for x in range(1, r.W - 1):
@@ -442,8 +596,11 @@ def render(r, overlay=False):
     background(cv, r, rng)
     mask = solid_masks(r)
     poles(cv, r)
+    import shrine_art
+    shrine_art.draw(cv, r, rng)                  # temple halls, ruins and door arches of the wing rooms (behind the terrain)
     unders = paint_terrain(cv, r, mask, rng)
     ends = vines(cv, r, mask, unders, rng)
+    beam_drips(cv, r, rng)
     place_food(cv, r, mask, ends, rng)
     foreground(cv, r, mask, rng)
     extras(cv, r, mask, rng)

@@ -19,8 +19,9 @@ def load():
         idx = int(os.path.basename(f).split("_")[0]); srcs.append(f)
         sh = "data/world/shaft_%02d.json" % idx
         if os.path.exists(sh): srcs.append(sh)
-    for p, s in zip(rt["pieces"], srcs): p["src"] = s
-    return rt["pieces"]
+    main = rt["pieces"][:len(srcs)]            # the wings are appended after the main stack; they have no junctions
+    for p, s in zip(main, srcs): p["src"] = s
+    return main
 
 def junction(args):
     pieces, i = args            # room i, shaft i+1, room i+2 (indices in pieces)

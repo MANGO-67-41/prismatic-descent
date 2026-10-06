@@ -21,6 +21,9 @@ func _initialize() -> void:
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 	for _i in 20:
 		await process_frame
+	if OS.get_environment("SHOT_GIFTS") != "":   # unlock every gift so no ascension plays in the shot
+		for a in game.vitals.unlocked:
+			game.vitals.unlocked[a] = true
 	var pid := OS.get_environment("SHOT_PIECE")
 	if OS.get_environment("SHOT_REGION") != "":
 		pid = str(int(WorldData.regions[int(OS.get_environment("SHOT_REGION"))]["first"]))
@@ -37,6 +40,16 @@ func _initialize() -> void:
 			await physics_frame
 			if OS.get_environment("SHOT_TRACE") != "" and _i % 20 == 0:
 				print(_i, " local ", game.player.position - Vector2(float(p["x"]), float(p["y"])), " floor ", game.player.is_on_floor(), " cer ", game.in_ceremony)
+	if OS.get_environment("SHOT_HUD") != "":
+		var v: VitalsState = game.vitals
+		for k in 4: v.add_shard()
+		v.hurt(3)
+		v.energy = float(OS.get_environment("SHOT_HUD"))
+		v.unlocked["pound"] = true
+		v.unlocked["dash_iframes"] = true
+		game.player._pound_cool = 2.0
+		for _i in 50:
+			await process_frame
 	match OS.get_environment("SHOT_MAP"):
 		"quick":
 			game.world_map.press_quick()

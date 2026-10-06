@@ -10,7 +10,7 @@ OUTLINE, EYE, EAR_IN = (29, 22, 32), (18, 13, 20), (214, 186, 178)
 SCARF, SCARF_D = (168, 81, 45), (110, 46, 30)
 LIGHT = (-0.55, -0.83)
 
-ANIMS = [("idle", 8), ("run", 8), ("jump", 2), ("apex", 1), ("fall", 2), ("land", 2), ("wall", 2), ("climb", 4), ("dash", 2), ("ascend", 4), ("pound", 2), ("eat", 3)]
+ANIMS = [("idle", 8), ("run", 8), ("jump", 2), ("apex", 1), ("fall", 2), ("land", 2), ("wall", 2), ("climb", 4), ("dash", 2), ("ascend", 4), ("pound", 2), ("eat", 3), ("swing", 4)]
 
 def ell(px, py, cx, cy, rx, ry, rot=0.0):
     x, y = px + .5 - cx, py + .5 - cy
@@ -183,7 +183,25 @@ def eat(i):
                 arms=[((12.8, 15.2), (15.8, 13.6 + chew))], arms_back=[((12.0, 15.4), (15.2, 14.6 + chew))],
                 tail=((8.6, 19.5), (3.5, 21.5), (2.6, 15.0 - chew)), blink=(i == 1))
 
-POSES = {"ascend": ascend, "pound": pound, "eat": eat, "idle": idle, "run": run, "jump": jump, "apex": apex, "fall": fall, "land": land, "wall": wall, "climb": climb, "dash": dash}
+## The bamboo stick swing: wind up over the shoulder, a lunging strike, follow through, recover. The stick itself is drawn by the
+## game (scripts/game/bamboo_stick.gd) from the hand; HANDS in that file are these hand points minus the feet (12, 22).
+SWING_HANDS = [(11.0, 10.6), (17.4, 13.4), (17.6, 17.6), (15.6, 17.4)]
+def swing(i):
+    hand = SWING_HANDS[i]
+    if i == 0:
+        return base(body=(11.2, 17.6, 4.0, 4.3), head=(12.4, 10.6, 4.6), ear=-1.9, ear_len=6.4, arms=[((12.6, 14.8), hand)],
+                    legs=[((11.6, 19.5), (13.6, 22.0))], legs_back=[((11.0, 19.5), (9.4, 22.0))],
+                    tail=((8.4, 19.5), (4.0, 22.0), (2.6, 17.0)), scarf_tail=(-2, 2), look=1.2)
+    if i in (1, 2):
+        return base(body=(12.4, 17.5, 4.3, 4.0), head=(14.4 + (i - 1) * .3, 11.0 + (i - 1) * .4, 4.5), ear=-2.95, ear_len=7.0,
+                    arms=[((13.6, 15.0 + (i - 1) * .6), hand)], arms_back=[((12.4, 15.4), (10.2, 17.2))],
+                    legs=[((12.8, 19.5), (15.4, 22.0))], legs_back=[((11.6, 19.5), (8.8, 22.0))],
+                    tail=((8.6, 18.6), (4.0, 16.5), (0.8, 14.5 - i)), scarf_tail=(-4, -1.5), look=1.6)
+    return base(body=(12.0, 17.6, 4.2, 4.2), head=(13.8, 10.8, 4.6), ear=-2.5, arms=[((13.2, 15.4), hand)],
+                legs=[((12.2, 19.5), (13.6, 22.0))], legs_back=[((11.2, 19.5), (10.0, 22.0))],
+                tail=((8.6, 19.5), (3.8, 21.0), (2.8, 15.0)), look=1.3)
+
+POSES = {"swing": swing, "ascend": ascend, "pound": pound, "eat": eat, "idle": idle, "run": run, "jump": jump, "apex": apex, "fall": fall, "land": land, "wall": wall, "climb": climb, "dash": dash}
 
 def write_png(path, rows, w, h):
     raw = bytearray()

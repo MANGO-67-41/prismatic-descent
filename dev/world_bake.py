@@ -11,7 +11,7 @@ from overgrowth_art import Room, Canvas, write_png, hexc, lerp
 import world_gen as wg
 
 T = 8
-REGION_COLOURS = ["8f9d5e", "d0743a", "56a3a6", "d8c9a0", "a98bb0"]
+REGION_COLOURS = ["8f9d5e", "d0743a", "56a3a6", "d8c9a0", "a98bb0", "a8e0f0"]
 
 def load_room(path):
     d = json.load(open(path))
@@ -20,6 +20,8 @@ def load_room(path):
     r.poles = [tuple(p) for p in d["poles"]]; r.marks = [tuple(m) for m in d["marks"]]
     r.food_pos = [tuple(p) for p in d["food"]]; r.pound_food = [tuple(p) for p in d["pound_food"]]
     r.cracks = [tuple(c) for c in d["cracks"]]; r.enemies = []
+    r.lake = d.get("lake")
+    r.deco = d.get("deco", [])
     return r, d
 
 def rects_of(tiles):
@@ -28,9 +30,9 @@ def rects_of(tiles):
     for y in range(th):
         x = 0
         while x < tw:
-            if tiles[y][x] not in "03":
+            if tiles[y][x] not in "034":
                 x0 = x
-                while x < tw and tiles[y][x] not in "03": x += 1
+                while x < tw and tiles[y][x] not in "034": x += 1
                 runs.append((x0, y, x - x0))
             else: x += 1
     out = []; open_ = {}
@@ -39,6 +41,19 @@ def rects_of(tiles):
         if k in open_ and open_[k][1] + open_[k][3] == y: open_[k][3] += 1
         else:
             r = [x, y, w, 1]; out.append(r); open_[k] = r
+    return out
+
+def beams_of(tiles):
+    """Runs of beam tiles (4) as [x, y, width] in tile units; they collide only along the top BEAM_H pixels of the tile."""
+    out = []
+    for y, row in enumerate(tiles):
+        x = 0
+        while x < len(row):
+            if row[x] == "4":
+                x0 = x
+                while x < len(row) and row[x] == "4": x += 1
+                out.append([x0, y, x - x0])
+            else: x += 1
     return out
 
 def render_piece(args):
@@ -60,28 +75,40 @@ def main():
     os.makedirs("assets/world/art", exist_ok=True)
     for n, (idx, is_shaft, f) in enumerate(order):
         d = json.load(open(f)); datas.append(d); jobs.append((f, "assets/world/art/p_%03d.png" % n))
-    # shafts are rendered through the same Room path (they are Rooms too)
+    n_main = len(datas)
+    wing_files = sorted(glob.glob("data/world/wing_*.json"), key=lambda f: ("shrine" in f, f))   # the lantern shrines come last, so no earlier wing's id moves
+    for k, f in enumerate(wing_files):             # wings: rooms built onto the side of a main room, after all main pieces
+        d = json.load(open(f)); datas.append(d); jobs.append((f, "assets/world/art/p_%03d.png" % (n_main + k)))
+    # shafts and wings are rendered through the same Room path (they are Rooms too)
     with Pool(8) as pool: pool.map(render_piece, jobs, chunksize=1)
     # stitch: the exit hole of each piece lines up with the entry hole of the next
     xs = []; prev_out = 0; y = 0; ys = []
-    for i, d in enumerate(datas):
+    for i, d in enumerate(datas[:n_main]):
         ent = (d["entry_tile"] or 0) * T if d["kind"] == "room" else 56
         ext = d["exit_tile"] * T if d["kind"] == "room" else 56
         x0 = 0 if i == 0 else prev_out - ent
         xs.append(x0); ys.append(y); prev_out = x0 + ext; y += d["th"] * T
+    room_piece = {int(os.path.basename(f).split("_")[0]): n for n, (idx, is_shaft, f) in enumerate(order) if not is_shaft}
+    for d in datas[n_main:]:                       # a wing sits beside its host, its floor level with the host's floor
+        h = room_piece[d["host"]]; hw = datas[h]["tw"] * T
+        xs.append(xs[h] - d["tw"] * T if d["side"] < 0 else xs[h] + hw)
+        ys.append(ys[h] + int(d["host_dy"]) * T)
     minx = min(xs); pad = 0
     pcs = []; region_of = lambda d: wg_region(d)
     names = [r[0] for r in wg.REGIONS]; themes = [r[1] for r in wg.REGIONS]
     for i, d in enumerate(datas):
         ri = themes.index(d["theme"])
+        wing = i >= n_main
         piece = dict(id=i, kind=d["kind"], name=d["name"], region=ri, x=xs[i] - minx, y=ys[i], w=d["tw"] * T, h=d["th"] * T,
-                     art="res://assets/world/art/p_%03d.png" % i, rects=rects_of(d["tiles"]),
+                     art="res://assets/world/art/p_%03d.png" % i, rects=rects_of(d["tiles"]), beams=beams_of(d["tiles"]),
                      entry=[(d["entry_tile"] or 0) * T, 0] if d["kind"] == "room" else [56, 0],
-                     exit=[(d["exit_tile"] * T) if d["kind"] == "room" else 56, d["th"] * T],
+                     exit=[0, d["th"] * T] if wing else [(d["exit_tile"] * T) if d["kind"] == "room" else 56, d["th"] * T],
                      rest=[[m[1], m[2]] for m in d["marks"] if m[0] == "rest"],
                      start=[[m[1], m[2]] for m in d["marks"] if m[0] == "start"], first=bool(d.get("first")),
                      margin=d.get("margin", 0), threat=d.get("threat", 0), ropes=d.get("ropes", []), theme=d["theme"],
+                     props=d.get("props", []), creatures=d.get("creatures", []),
                      cracks=[[x, y] for y, row in enumerate(d["tiles"]) for x, c in enumerate(row) if c == "3"])
+        if wing: piece.update(wing=True, wing_kind=d["wing_kind"], host=room_piece[d["host"]], side=d["side"])
         pcs.append(piece)
     W = max(p["x"] + p["w"] for p in pcs); H = y
     # map picture: 1 px = 2x2 tiles
@@ -110,7 +137,7 @@ def main():
     open("assets/world/map.png", "wb").write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", mw, mh, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(bytes(raw), 9)) + chunk(b"IEND", b""))
     regions = []
     for ri, name in enumerate(names):
-        mine = [p for p in pcs if p["region"] == ri]
+        mine = [p for p in pcs if p["region"] == ri and not p.get("wing")]
         regions.append(dict(name=name, theme=themes[ri], colour="#" + REGION_COLOURS[ri], y0=mine[0]["y"], y1=mine[-1]["y"] + mine[-1]["h"], first=mine[0]["id"], last=mine[-1]["id"]))
     os.makedirs("data", exist_ok=True)
     json.dump(dict(tile=T, width=W, height=H, map_scale=S, map_size=[mw, mh], regions=regions, pieces=pcs), open("data/world_runtime.json", "w"), separators=(",", ":"))

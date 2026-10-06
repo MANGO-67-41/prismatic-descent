@@ -1,6 +1,6 @@
 extends Control
 ## UI preview: the in-game HUD and inventory over a placeholder background, driven by demo values.
-## There is no gameplay yet. Demo keys (H hurt, K hurt 2, J heal, G shard, T food, C scrap, R next
+## There is no gameplay yet. Demo keys (H hurt, K hurt 2, J heal, G shard, T fill energy, C scrap, R next
 ## ability) only exist to try the UI and only work in debug builds (the editor), not in exports.
 ## Tab shows the quick map, M the full map. Esc closes the inventory, or opens the pause menu (Continue / Options / Quit To Menu).
 
@@ -117,7 +117,7 @@ func _demo_key(keycode: Key) -> void:
 		KEY_G:
 			vitals.add_shard()
 		KEY_T:
-			vitals.eat(1)
+			vitals.energy = 1.0
 		KEY_C:
 			vitals.add_currency(25)
 		KEY_R:

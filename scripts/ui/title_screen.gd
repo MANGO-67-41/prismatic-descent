@@ -135,6 +135,7 @@ class PipBar extends Control:
 
 var _screen: int = Screen.MAIN
 var _rows: Array[Dictionary] = []
+var _hint_flashing := false     ## a message is showing in the hint line (it is put back after 2 s)
 var _index := 0
 var _return_index := 0
 var _capturing_row := -1
@@ -165,7 +166,6 @@ var _ls_dim: LabelSettings
 
 func _ready() -> void:
 	theme = UITheme.build()
-	_ensure_keys()
 	SettingsStore.load_settings()
 	SettingsStore.apply()
 	KeyBindings.setup()
@@ -261,15 +261,6 @@ func debug_show(screen: int, index: int, capturing: bool = false) -> void:
 		_capturing_row = _index
 	_refresh()
 	_place_selector(false)
-
-
-func _ensure_keys() -> void:
-	var extra := {"ui_up": KEY_W, "ui_down": KEY_S, "ui_left": KEY_A, "ui_right": KEY_D}
-	for action in extra:
-		var ev := InputEventKey.new()
-		ev.physical_keycode = extra[action]
-		if not InputMap.action_has_event(action, ev):
-			InputMap.action_add_event(action, ev)
 
 
 # --- Building -----------------------------------------------------------------------------
@@ -384,9 +375,15 @@ func _text_width(text: String) -> float:
 
 
 func _default_hint() -> String:
-	var text := "ARROWS, WASD OR MOUSE     ENTER OR CLICK TO SELECT"
+	var dirs := KeyBindings.direction_keys() if KeyBindings.keys.size() > 0 else "WASD"
+	var text := "%s OR MOUSE     ENTER OR CLICK TO SELECT" % dirs
 	if _screen == Screen.PROFILES:
-		return "ARROWS OR MOUSE     ENTER SELECT     DELETE CLEAR     ESC BACK"
+		var filled := false
+		if _index >= 0 and _index < _rows.size() and _rows[_index]["kind"] == "slot" and _rows[_index].has("node"):
+			filled = not (_rows[_index]["node"] as ProfileRow).data.is_empty()
+		if filled:
+			return "%s OR MOUSE     ENTER CONTINUE     DELETE CLEAR SAVE     ESC BACK" % dirs
+		return "%s OR MOUSE     ENTER NEW GAME     ESC BACK" % dirs
 	if _screen != Screen.MAIN:
 		text += "     ESC BACK"
 	return text
@@ -416,8 +413,8 @@ func _show_screen(screen: int) -> void:
 		top = 50
 		pitch = 12
 	elif screen == Screen.PROFILES:
-		top = 62
-		pitch = 42
+		top = 56
+		pitch = 44
 	for i in _rows.size():
 		var row := _rows[i]
 		var y := top + i * pitch
@@ -512,6 +509,8 @@ func _refresh() -> void:
 				keys_label.label_settings = _ls_value if active else _ls_normal
 	_selector.tint = Color.from_hsv(fposmod(UITheme.PRISM_HUE + _index * 0.04, 1.0), 0.25, 1.0)
 	_selector.queue_redraw()
+	if _screen == Screen.PROFILES and not _hint_flashing:
+		_hint.text = _default_hint()          # what Enter does depends on the slot under the cursor
 
 
 func _selector_target() -> Vector2:
@@ -707,9 +706,11 @@ func _finish_capture(key: Key) -> void:
 func _flash_hint(text: String) -> void:
 	var previous := _hint.text
 	_hint.text = text
+	_hint_flashing = true
 	get_tree().create_timer(2.0).timeout.connect(func() -> void:
 		if is_instance_valid(_hint) and _hint.text == text:
-			_hint.text = previous if _capturing_row == -1 else "PRESS THE NEW KEY     ESC CANCEL"
+			_hint_flashing = false
+			_hint.text = (_default_hint() if _screen == Screen.PROFILES else previous) if _capturing_row == -1 else "PRESS THE NEW KEY     ESC CANCEL"
 	)
 
 

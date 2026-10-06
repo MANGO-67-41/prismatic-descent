@@ -29,8 +29,9 @@ REGIONS = [
    ("CINDER STEPS", 1, 1, 5, 1), ("EMBER HALL", 2, 1, 5, 2), ("SOOT SHAFT", 1, 3, 6, 2), ("KILN", 2, 2, 6, 3),
    ("SLAG FIELD", 2, 1, 7, 3), ("ASH WELL", 1, 2, 7, 3), ("CHARRED NAVE", 2, 2, 8, 4), ("GLASS HALL", 2, 1, 8, 4),
    ("LAST DESCENT", 1, 3, 8, 5), ("LAKE GATE", 1, 1, 6, 3)]),
+ ("THE PRISMATIC LAKE", "lake", [("PRISMATIC LAKE", 3, 2, 0, 0)]),   # authored by dev/make_lake.py, not generated
 ]
-N_ROOMS = sum(len(r[2]) for r in REGIONS)
+N_ROOMS = sum(len(r[2]) for r in REGIONS[:5])
 EXTRAS = 3
 REST_AT = 5       # index of the room (per region) that holds a rest point
 

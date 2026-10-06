@@ -17,7 +17,7 @@ class Stats:
         self.wall_slide = 60
         self.wj_vx, self.wj_vy, self.wj_lock = 120 * s, 270 * s, 0.18
         self.double_jump = double_jump
-        self.dj_v = 230 * s
+        self.dj_v = 277 * s
 
 class Grid:
     """Tile collision. Out of the room counts as solid except through `openings` (tile rects x0, y0, x1, y1)."""

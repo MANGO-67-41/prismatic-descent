@@ -1,13 +1,13 @@
 class_name Game
 extends Node2D
 ## The playable game: the fixed world streamed around the hero, the Rain World-style camera, and the UI on top
-## (HUD, inventory, map, pause). Enemies and food pickups come later.
+## (HUD, inventory, map, pause). Enemies come later.
 
 const TITLE_SCENE := "res://scenes/ui/title_screen.tscn"
-const DEMO_KEYS: Array[Key] = [KEY_H, KEY_K, KEY_J, KEY_G, KEY_T, KEY_C, KEY_R]
+const DEMO_KEYS: Array[Key] = [KEY_H, KEY_K, KEY_U, KEY_G, KEY_T, KEY_C, KEY_R]
 const REST_REACH := Vector2(20, 26)
 ## The ability each region gives the first time the hero enters it (region index -> ability id).
-const REGION_ABILITY := ["", "pound", "double_jump", "dash_iframes", "fast_heal"]
+const REGION_ABILITY := ["", "pound", "double_jump", "dash_iframes", "fast_heal", ""]
 
 var vitals := VitalsState.new()
 var world: World
@@ -19,6 +19,13 @@ var pause_menu: PauseMenu
 var world_map: WorldMap
 var ceremony: UpgradeCeremony
 var area_title: AreaTitle
+const LANTERN_ROOM := "LANTERN ROOM"
+var scroll_reader: ScrollReader
+var toast: Toast
+var boss_bar: BossBar
+var death_screen: DeathScreen
+var dying := false  ## the fade out and back in after the hero's last crystal breaks
+var _fade_rect: ColorRect
 var _region_idx := -1
 var in_ceremony := false
 var _grounded := 0.0  ## how long the hero has stood on solid ground (the gift waits for a real landing)
@@ -41,16 +48,21 @@ func _ready() -> void:
 		for r in p["rest"]:
 			_rests.append(Vector2(float(p["x"]) + float(r[0]), float(p["y"]) + float(r[1])))
 	world = World.new()
+	world.game = self
 	add_child(world)
 	player = Player.new()
 	player.world = world
 	player.vitals = vitals
 	player.pounded.connect(_on_pounded)
+	player.hit.connect(_on_hero_hit)
+	player.swung.connect(_on_swung)
+	player.landed.connect(func() -> void: _noise(player.global_position, 70.0))
 	add_child(player)
 	cam = GameCamera.new()
 	add_child(cam)
 	cam.make_current()
 	_build_ui()
+	hud.player = player
 	_spawn()
 
 
@@ -83,8 +95,21 @@ func _build_ui() -> void:
 	ui.add_child(ceremony)
 	area_title = AreaTitle.new()
 	ui.add_child(area_title)
+	boss_bar = BossBar.new()
+	ui.add_child(boss_bar)
+	toast = Toast.new()
+	ui.add_child(toast)
+	scroll_reader = ScrollReader.new()
+	ui.add_child(scroll_reader)
 	pause_menu = PauseMenu.new()
 	ui.add_child(pause_menu)
+	death_screen = DeathScreen.new()
+	ui.add_child(death_screen)
+	_fade_rect = ColorRect.new()
+	_fade_rect.color = Color(UITheme.INK, 0.0)
+	_fade_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_fade_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.add_child(_fade_rect)
 	pause_menu.quit_to_menu.connect(_go_title)
 	inventory.opened.connect(_set_overlay_ui.bind(false))
 	inventory.closed.connect(_set_overlay_ui.bind(true))
@@ -106,7 +131,15 @@ func _spawn() -> void:
 			vitals.unlocked[str(a)] = true
 		for b in progress.get("broken", []):
 			world.broken[str(b)] = true
-		vitals.food = int(progress.get("food", vitals.food))
+		vitals.energy = float(progress.get("energy", 0.0))
+		for id in progress.get("items", []):
+			vitals.items[str(id)] = true
+		for id in progress.get("guardians", []):
+			vitals.guardians[str(id)] = true
+		for id in progress.get("doors", []):
+			vitals.doors[str(id)] = true
+		for id in progress.get("scrolls", []):
+			vitals.read_scrolls[str(id)] = true
 	player.position = start
 	piece = maxi(WorldData.piece_at(start - Vector2(0, 7), 0), 0)
 	world.update_focus(player.position, true)
@@ -129,8 +162,21 @@ func _process(delta: float) -> void:
 	cam.follow(WorldData.rect(piece), player.position, WorldData.pieces[piece]["kind"] == "shaft", delta)
 	world.update_focus(player.position)
 	world_map.set_player(player.position, piece)
-	player.input_enabled = not (inventory.is_open or world_map.is_full() or pause_menu.is_open or in_ceremony)
+	if not in_ceremony:
+		vitals.tick_energy(delta)
+	player.input_enabled = not (inventory.is_open or world_map.is_full() or pause_menu.is_open or in_ceremony or scroll_reader.is_open or dying)
 	_check_region_gift()
+	# footsteps: running on the ground makes a little noise every few strides (the blind crypt lizard hunts by it)
+	if player.is_on_floor() and absf(player.velocity.x) > 40.0 and not player.frozen:
+		_step_t -= delta
+		if _step_t <= 0.0:
+			_step_t = 0.3
+			_noise(player.global_position, 45.0)
+	else:
+		_step_t = 0.0
+
+
+var _step_t := 0.0
 
 
 func _enter_piece(id: int) -> void:
@@ -142,6 +188,8 @@ func _enter_piece(id: int) -> void:
 	if region_index != _region_idx:
 		_region_idx = region_index
 		area_title.show_area(region, WorldMap.REGIONS[region_index]["colour"])
+	elif str(WorldData.pieces[id].get("wing_kind", "")) == "shrine":
+		area_title.show_area(LANTERN_ROOM, WorldMap.REGIONS[region_index]["colour"])      # walking into one of the lantern shrines
 	if region != vitals.region:
 		vitals.region = region
 		vitals.changed.emit()
@@ -206,12 +254,110 @@ func _ascend(gift: String) -> void:
 var _ceremony_tween: Tween
 
 
+## A sound the creatures can hear: they turn toward it if it carries far enough for their region's ears.
+func _noise(at: Vector2, radius: float) -> void:
+	get_tree().call_group("creatures", "hear", at, radius)
+
+
 func _on_pounded(at: Vector2) -> void:
+	_noise(at, 240.0)
 	AbilityFx.shockwave(self, at)
 	var n := world.break_cracks_at(at)
 	cam.shake(3.0 if n > 0 else 1.5)
 	if n > 0:
 		_save()
+
+
+# --- The temples: scrolls, keys, gates, guardians, and being hurt -------------------------------------
+
+
+func read_scroll(id: String) -> void:
+	var data := StoryData.scroll(id)
+	vitals.read_scrolls[id] = true
+	scroll_reader.open(str(data["title"]), data["pages"])
+	_save()
+
+
+func collect_key(region: int) -> void:
+	vitals.items["key_%d" % region] = true
+	vitals.changed.emit()
+	toast.show_message(StoryData.key_name(region), StoryData.COLOURS[region], "A GATE WILL OPEN FOR IT")
+	_save()
+
+
+func open_door(id: String) -> void:
+	vitals.doors[id] = true
+	toast.show_message("THE GATE OPENS", Color("e8d9a8"))
+	cam.shake(2.0)
+	_save()
+
+
+func guardian_defeated(id: String, region: int) -> void:
+	vitals.guardians[id] = true
+	vitals.add_shard()
+	var left := 5 - vitals.guardians.size()
+	toast.show_message(StoryData.REGIONS[region] + " GUARDIAN FALLEN", StoryData.COLOURS[region],
+			"THE SEAL ABOVE THE LAKE WILL OPEN" if left == 0 else "%d OF 5 GUARDIANS BROKEN" % vitals.guardians.size())
+	_save()
+
+
+## The bamboo stick landed: whatever can be stunned in its reach is (see Guardian.stick_hit). A clean stun freezes the
+## world for a blink and shakes the camera; a glancing blow only sparks.
+func _on_swung(box: Rect2, _dir: int) -> void:
+	_noise(player.global_position, 80.0)
+	var recoiled := false
+	for node in get_tree().get_nodes_in_group("stunnable"):
+		var result: int = node.stick_hit(box, player.global_position.x)
+		if result == 0:
+			continue
+		if not recoiled:
+			recoiled = true
+			player.recoil()
+		var fx := BambooStick.Impact.new(result == 1)
+		fx.position = (box.get_center() + (Vector2.ZERO if player.swing_up() else Vector2(player.facing * 6.0, 0.0))).floor()
+		add_child(fx)
+		if result == 1:
+			cam.shake(2.5)
+			_hitstop(0.07)
+		else:
+			cam.shake(0.8)
+
+
+func _hitstop(seconds: float) -> void:
+	Engine.time_scale = 0.05
+	get_tree().create_timer(seconds, true, false, true).timeout.connect(func() -> void: Engine.time_scale = 1.0)
+
+
+func _on_hero_hit(_from_x: float) -> void:
+	cam.shake(2.5)
+	if vitals.health <= 0:
+		_die()
+
+
+## The last crystal broke: fade out, wake at the last rest with full health, fade back in. Guardians reset.
+func _die() -> void:
+	if dying:
+		return
+	dying = true
+	player.grant_invincibility(6.0)
+	death_screen.finished.connect(func() -> void: dying = false, CONNECT_ONE_SHOT)
+	death_screen.play(_wake_at_rest, func() -> void: cam.shake(3.0))
+
+
+## Under the death screen's ink: the hero wakes at the last lantern with every crystal back.
+func _wake_at_rest() -> void:
+	player.respawn_at(rest_pos)
+	vitals.heal(vitals.max_health)
+	player.grant_invincibility(1.5)
+	world.update_focus(rest_pos, true)
+	piece = maxi(WorldData.piece_at(rest_pos - Vector2(0, 7), 0), 0)
+	_enter_piece(piece)
+	cam.follow(WorldData.rect(piece), rest_pos, WorldData.pieces[piece]["kind"] == "shaft", 1.0)
+	# the corner says where they woke, as the ink lifts
+	var colour: Color = WorldMap.REGIONS[int(WorldData.pieces[piece]["region"])]["colour"]
+	get_tree().create_timer(0.4).timeout.connect(func() -> void:
+		if is_instance_valid(area_title):
+			area_title.show_area(LANTERN_ROOM, colour))
 
 
 func _set_overlay_ui(show_hud: bool) -> void:
@@ -228,7 +374,8 @@ func _save() -> void:
 	if in_ceremony:
 		pos.y = rest_pos.y if pos.distance_to(rest_pos) < 1.0 else pos.y
 	SaveSlots.write_progress(SaveSlots.current_slot, pos, discovered.keys(), rest_pos,
-			{"abilities": abilities, "broken": world.broken.keys(), "food": vitals.food})
+			{"abilities": abilities, "broken": world.broken.keys(), "energy": vitals.energy, "items": vitals.items.keys(),
+			"guardians": vitals.guardians.keys(), "doors": vitals.doors.keys(), "scrolls": vitals.read_scrolls.keys()})
 
 
 func _exit_tree() -> void:
@@ -268,7 +415,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _press_map(full: bool) -> void:
-	if inventory.is_open or pause_menu.is_open or in_ceremony:
+	if inventory.is_open or pause_menu.is_open or in_ceremony or scroll_reader.is_open:
 		return
 	if full:
 		world_map.press_full()
@@ -277,7 +424,7 @@ func _press_map(full: bool) -> void:
 
 
 func _toggle_inventory() -> void:
-	if world_map.is_full() or in_ceremony:
+	if world_map.is_full() or in_ceremony or scroll_reader.is_open:
 		return
 	if inventory.is_open:
 		inventory.close()
@@ -287,19 +434,24 @@ func _toggle_inventory() -> void:
 
 
 func _interact() -> void:
-	if inventory.is_open or pause_menu.is_open or world_map.is_full():
+	if inventory.is_open or pause_menu.is_open or world_map.is_full() or scroll_reader.is_open or dying:
 		return
+	for node in get_tree().get_nodes_in_group("interactable"):
+		if node.has_method("can_interact") and node.can_interact(player.global_position):
+			node.interact(self)
+			return
 	for r in _rests:
 		var d := (player.position - r).abs()
 		if d.x <= REST_REACH.x and d.y <= REST_REACH.y:
 			rest_pos = r
+			get_tree().call_group("creatures", "forget", 6.0)      # a lantern is a breather: whatever was hunting loses them
 			vitals.heal(vitals.max_health)
 			_save()
 			return
 
 
 func _on_cancel() -> void:
-	if not inventory.is_open and not pause_menu.is_open:
+	if not inventory.is_open and not pause_menu.is_open and not scroll_reader.is_open:
 		world_map.close()
 		_save()
 		pause_menu.open()
@@ -316,12 +468,12 @@ func _demo_key(keycode: Key) -> void:
 			vitals.hurt(1)
 		KEY_K:
 			vitals.hurt(2)
-		KEY_J:
+		KEY_U:
 			vitals.heal(1)
 		KEY_G:
 			vitals.add_shard()
 		KEY_T:
-			vitals.eat(1)
+			vitals.energy = 1.0
 		KEY_C:
 			vitals.add_currency(25)
 		KEY_R:

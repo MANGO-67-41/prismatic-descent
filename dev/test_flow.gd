@@ -49,7 +49,7 @@ func _initialize() -> void:
 	await _frames(5)
 	_check("Enter on START GAME opens the profile screen", title._screen == 3)
 	for _i in slot - 1:
-		_press(KEY_DOWN)
+		_press(KEY_S)
 		await _frames(2)
 	_press(KEY_ENTER)  # choose the empty slot: creates a profile and loads the preview scene
 	await _frames(10)
@@ -117,9 +117,9 @@ func _initialize() -> void:
 	_check("Esc again resumes the game", not game.pause_menu.is_open and not paused)
 	_press(KEY_ESCAPE)
 	await _frames(6)
-	_press(KEY_DOWN)
+	_press(KEY_S)
 	await _frames(3)
-	_press(KEY_DOWN)
+	_press(KEY_S)
 	await _frames(3)
 	_press(KEY_ENTER)  # QUIT TO MENU
 	await _frames(12)

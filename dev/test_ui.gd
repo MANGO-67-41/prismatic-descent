@@ -74,14 +74,16 @@ func _initialize() -> void:
 	await process_frame
 	_check("binding MOVE LEFT to K swaps with JUMP", KeyBindings.keys["move_left"] == KEY_K and KeyBindings.keys["jump"] == KEY_A)
 
-	# Reserved key is refused and capture stays open.
+	# The arrow keys are free to bind; Escape only cancels.
 	scene._begin_capture(0)
 	vp.push_input(_key(KEY_LEFT))
 	await process_frame
-	_check("arrow key refused as reserved", scene._capturing_row == 0)
+	_check("an arrow key can be bound", scene._capturing_row == -1 and KeyBindings.keys["move_left"] == KEY_LEFT)
+	_check("the menus then follow the arrow key", InputMap.action_has_event("ui_left", _key(KEY_LEFT)) and not InputMap.action_has_event("ui_left", _key(KEY_K)))
+	scene._begin_capture(0)
 	vp.push_input(_key(KEY_ESCAPE))
 	await process_frame
-	_check("Escape cancels capture", scene._capturing_row == -1)
+	_check("Escape cancels capture", scene._capturing_row == -1 and KeyBindings.keys["move_left"] == KEY_LEFT)
 
 	# Reset defaults.
 	KeyBindings.reset_defaults()
@@ -160,7 +162,7 @@ func _initialize() -> void:
 	wm.press_full()
 	wm.press_full()
 	_check("full key toggles the full map", wm.mode == WorldMap.Mode.CLOSED)
-	_check("the map covers the five regions and the 99 pieces of the real world", WorldMap.REGIONS.size() == 5 and WorldData.pieces.size() == 99)
+	_check("the map covers the six regions and the 131 pieces of the real world", WorldMap.REGIONS.size() == 6 and WorldData.pieces.size() == 131)
 	wm.queue_free()
 
 	# Inventory: open, navigate, close.
@@ -174,7 +176,7 @@ func _initialize() -> void:
 	var first_sel: int = inv._sel
 	inv._navigate(Vector2.RIGHT)
 	_check("navigating right moves selection", inv._sel != first_sel)
-	_check("inventory has no items yet, only the four ability slots", inv._slots.size() == 4)
+	_check("inventory holds the four ability slots and the bamboo stick (no keys yet)", inv._slots.size() == 5)
 	var reached_ability := false
 	for _n in 8:
 		inv._navigate(Vector2.DOWN)

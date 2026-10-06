@@ -1,6 +1,6 @@
 class_name Glyphs
 extends RefCounted
-## Shared pixel drawing for UI: health crystals, food pips, ornaments, ability badges, item icons.
+## Shared pixel drawing for UI: health pips (round, Rain World style), the energy circle, ornaments, ability badges.
 ## Every function draws onto a CanvasItem (call from its _draw) in whole pixels.
 
 enum Crystal { FULL, EMPTY, SHATTER, REGROW }
@@ -19,17 +19,6 @@ const CRYSTAL_SHAPE: Array[String] = [
 	"...###...",
 	"....#....",
 ]
-const FOOD_SHAPE: Array[String] = [
-	"..###..",
-	".#####.",
-	"#######",
-	"#######",
-	"#######",
-	".#####.",
-	"..###..",
-]
-const FOOD_PITCH := 9
-
 const SHATTER_DIRS: Array[Vector2] = [
 	Vector2(-1.0, -0.6), Vector2(1.0, -0.6),
 	Vector2(-1.0, 0.0), Vector2(1.0, 0.0),
@@ -60,64 +49,131 @@ static func _crystal_colour(c: int, r: int, glow: float) -> Color:
 	return colour
 
 
-## mode: Crystal.FULL / EMPTY / SHATTER (t 0..1, pieces fly apart) / REGROW (t 0..1, rebuilds with a flash).
-## glow 0..1 dims or brightens a full crystal (used for the low-health pulse).
+## A health pip in the old crystal's 9x11 cell (kept for the inventory and profile rows).
 static func draw_crystal(ci: CanvasItem, origin: Vector2, mode: int, t: float = 0.0, glow: float = 1.0) -> void:
-	var rows := CRYSTAL_SHAPE.size()
-	for pass_index in 2:
-		for r in rows:
-			for c in CRYSTAL_SHAPE[r].length():
-				if not _filled(CRYSTAL_SHAPE, r, c):
-					continue
-				var offset := Vector2.ZERO
-				var alpha := 1.0
-				var colour := _crystal_colour(c, r, glow)
-				match mode:
-					Crystal.EMPTY:
-						var edge := not (_filled(CRYSTAL_SHAPE, r, c - 1) and _filled(CRYSTAL_SHAPE, r, c + 1) and _filled(CRYSTAL_SHAPE, r - 1, c) and _filled(CRYSTAL_SHAPE, r + 1, c))
-						colour = UITheme.RUST_DARK if edge else Color("1c1218")
-					Crystal.SHATTER:
-						var chunk := (0 if c < 4 else 1) + 2 * (0 if r < 4 else (1 if r < 7 else 2))
-						var dir := SHATTER_DIRS[chunk]
-						offset = Vector2(roundf(dir.x * t * 9.0), roundf(dir.y * t * 6.0 + t * t * 18.0))
-						alpha = 1.0 - t
-					Crystal.REGROW:
-						if r < rows - ceili(t * rows):
-							continue
-						colour = colour.lerp(Color.WHITE, (1.0 - t) * 0.8)
-				var p := origin + offset + Vector2(c, r)
-				if pass_index == 0:
-					draw_outline_pixel(ci, p, alpha)
-				else:
-					ci.draw_rect(Rect2(p, Vector2.ONE), Color(colour, alpha))
+	draw_life_pip(ci, origin + Vector2(4.5, 5.5), mode, t, glow, 4.5)
+
+
+## Round health pip: a pale ring around a soft inner disc (full), a dim hollow ring (empty).
+## SHATTER (t 0..1): the ring bursts outward and fades, chips fly. REGROW (t 0..1): the disc swells back with a flash.
+static func draw_life_pip(ci: CanvasItem, centre: Vector2, mode: int, t: float = 0.0, glow: float = 1.0, r: float = 5.5) -> void:
+	var ring := UITheme.CREAM.lerp(Color.WHITE, 0.15 * glow)
+	var disc := Color("d8d2c8").lerp(Color("f6f2ea"), 0.4 * glow)
+	var span := int(ceil(r + 4.0))
+	for dy in range(-span, span + 1):
+		for dx in range(-span, span + 1):
+			var px := Vector2(floorf(centre.x) + dx, floorf(centre.y) + dy)
+			var d := (px + Vector2(0.5, 0.5)).distance_to(centre)
+			var col := Color(0, 0, 0, 0)
+			match mode:
+				Crystal.FULL, Crystal.REGROW:
+					var inner := r - 2.6
+					if mode == Crystal.REGROW:
+						inner *= t
+					if d <= r + 1.0 and d > r:
+						col = UITheme.INK
+					elif d <= r and d > r - 1.5:
+						col = ring if mode == Crystal.FULL else Color(ring, 0.35 + 0.65 * t)
+					elif d <= r - 1.5 and d > r - 2.6:
+						col = Color("1c1218")
+					elif d <= inner:
+						col = disc
+						if px.x + 0.5 < centre.x - 0.6 and px.y + 0.5 < centre.y - 0.6:
+							col = disc.lerp(Color.WHITE, 0.55)
+						if mode == Crystal.REGROW:
+							col = col.lerp(Color.WHITE, (1.0 - t) * 0.85)
+					elif d <= r - 2.6:
+						col = Color("1c1218")
+				Crystal.EMPTY:
+					if d <= r + 1.0 and d > r:
+						col = UITheme.INK
+					elif d <= r and d > r - 1.2:
+						col = Color("6a5a5e")
+					elif d <= r - 1.2:
+						col = Color("1c1218")
+				Crystal.SHATTER:
+					var rr := r + t * 3.0
+					if d <= r + 1.0 and d > r - 1.2 and t > 0.6:
+						col = Color("6a5a5e")
+					if d <= rr and d > rr - 1.4:
+						col = Color(ring, 1.0 - t)
+					elif d <= (r - 2.6) * (1.0 - t):
+						col = Color(Color.WHITE, 1.0 - t)
+			if col.a > 0.0:
+				ci.draw_rect(Rect2(px, Vector2.ONE), col)
+	if mode == Crystal.SHATTER:
+		for k in 4:
+			var ang := k * TAU / 4.0 + 0.8
+			var p := (centre + Vector2(cos(ang), sin(ang)) * (r + t * 9.0) + Vector2(0, t * t * 10.0)).floor()
+			ci.draw_rect(Rect2(p, Vector2(2, 1)), Color(ring, 1.0 - t))
+
+
+## The energy circle: a ring whose inside fills from the bottom with prismatic light as `fill` goes 0..1.
+## When full it breathes and its crystal glyph lights. `heal` 0..1 draws a bright arc around it while a heal is channelled.
+static func draw_energy(ci: CanvasItem, centre: Vector2, r: float, fill: float, time: float, heal: float = 0.0) -> void:
+	var full := fill >= 1.0
+	var level := centre.y + (r - 2.0) - (r - 2.0) * 2.0 * fill
+	var span := int(ceil(r + 3.0))
+	var pulse := 0.5 + 0.5 * sin(time * 3.0) if full and not SettingsStore.reduce_flashing else 1.0
+	for dy in range(-span, span + 1):
+		for dx in range(-span, span + 1):
+			var px := Vector2(floorf(centre.x) + dx, floorf(centre.y) + dy)
+			var pc := px + Vector2(0.5, 0.5)
+			var d := pc.distance_to(centre)
+			var col := Color(0, 0, 0, 0)
+			if d <= r + 1.0 and d > r:
+				col = UITheme.INK
+			elif d <= r and d > r - 2.0:
+				col = UITheme.CREAM.lerp(Color.WHITE, 0.3 * pulse) if full else UITheme.CREAM_DIM
+			elif d <= r - 2.0:
+				col = Color("1c1218")
+				if pc.y >= level:
+					var hue := fmod(0.5 + (pc.x - centre.x) / (r * 6.0) + time * 0.05, 1.0)
+					col = Color.from_hsv(hue, 0.35, 0.95)
+					if pc.y < level + 1.0:
+						col = Color.WHITE
+			if col.a > 0.0:
+				ci.draw_rect(Rect2(px, Vector2.ONE), col)
+	# the glyph: a small crystal in the middle, dark until the circle is full
+	var g := Color.WHITE if full else Color(UITheme.INK, 0.55)
+	draw_diamond(ci, centre.floor(), 3, g)
+	ci.draw_rect(Rect2(centre.floor() + Vector2(0, -5), Vector2(1, 2)), g)
+	ci.draw_rect(Rect2(centre.floor() + Vector2(0, 4), Vector2(1, 2)), g)
+	if heal > 0.0:
+		var steps := int(48 * heal)
+		for k in steps:
+			var ang := -PI / 2.0 + k * TAU / 48.0
+			ci.draw_rect(Rect2((centre + Vector2(cos(ang), sin(ang)) * (r + 2.5)).floor(), Vector2.ONE), Color.from_hsv(fmod(0.5 + k / 48.0 * 0.3, 1.0), 0.4, 1.0))
 
 
 static func draw_outline_pixel(ci: CanvasItem, p: Vector2, alpha: float = 1.0) -> void:
 	ci.draw_rect(Rect2(p - Vector2.ONE, Vector2(3, 3)), Color(UITheme.INK, alpha))
 
 
-# --- Food ---------------------------------------------------------------------------------
-
-
-## Rain World-style round pip. `alarm` 0..1 pulses an empty ring toward rust (starving).
-static func draw_food_pip(ci: CanvasItem, origin: Vector2, filled: bool, alarm: float = 0.0) -> void:
-	for pass_index in 2:
-		for r in FOOD_SHAPE.size():
-			for c in FOOD_SHAPE[r].length():
-				if not _filled(FOOD_SHAPE, r, c):
-					continue
-				var p := origin + Vector2(c, r)
-				if pass_index == 0:
-					draw_outline_pixel(ci, p)
-					continue
-				var edge := not (_filled(FOOD_SHAPE, r, c - 1) and _filled(FOOD_SHAPE, r, c + 1) and _filled(FOOD_SHAPE, r - 1, c) and _filled(FOOD_SHAPE, r + 1, c))
-				var colour := UITheme.CREAM
-				if not filled:
-					colour = UITheme.RUST_DARK.lerp(UITheme.RUST, alarm) if edge else Color("1c1218")
-				ci.draw_rect(Rect2(p, Vector2.ONE), colour)
-
-
 # --- Ornaments ----------------------------------------------------------------------------
+
+
+## A pixel key standing upright: a round bow with a hole, a shaft and two teeth. `centre` is the middle of the whole key.
+static func draw_key(ci: CanvasItem, centre: Vector2, colour: Color, scale: int = 1, glow: float = 0.0) -> void:
+	var o := centre.floor() - Vector2(3, 7) * scale
+	var dark := colour.darkened(0.55)
+	var light := colour.lightened(0.45)
+	if glow > 0.0:
+		draw_diamond(ci, o + Vector2(3, 4) * scale, 9 * scale, Color(colour, 0.14 * glow))
+		draw_diamond(ci, o + Vector2(3, 4) * scale, 6 * scale, Color(colour, 0.2 * glow))
+	for y in range(-1, 15):
+		var inked := Rect2(o + Vector2(-1, y) * scale, Vector2(8, 1) * scale)
+		if y < 8:
+			ci.draw_rect(inked, UITheme.INK)
+	ci.draw_rect(Rect2(o + Vector2(1, 0) * scale, Vector2(4, 1) * scale), colour)
+	ci.draw_rect(Rect2(o + Vector2(0, 1) * scale, Vector2(6, 5) * scale), colour)
+	ci.draw_rect(Rect2(o + Vector2(1, 6) * scale, Vector2(4, 1) * scale), dark)
+	ci.draw_rect(Rect2(o + Vector2(2, 2) * scale, Vector2(2, 3) * scale), UITheme.INK)
+	ci.draw_rect(Rect2(o + Vector2(1, 1) * scale, Vector2(2, 1) * scale), light)
+	ci.draw_rect(Rect2(o + Vector2(2, 7) * scale, Vector2(2, 7) * scale), colour)
+	ci.draw_rect(Rect2(o + Vector2(3, 7) * scale, Vector2(1, 7) * scale), dark)
+	ci.draw_rect(Rect2(o + Vector2(4, 9) * scale, Vector2(2, 1) * scale), colour)
+	ci.draw_rect(Rect2(o + Vector2(4, 12) * scale, Vector2(3, 1) * scale), colour)
 
 
 static func draw_diamond(ci: CanvasItem, centre: Vector2, radius: int, colour: Color) -> void:

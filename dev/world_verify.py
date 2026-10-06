@@ -10,8 +10,25 @@ from world_bake import load_room
 from world_thin import meta_for
 T = 8
 
+def check_final(path, d, r):
+    """The last room has no exit: from the entrance the temple door must be reachable, and from the door the way back up."""
+    g = wp.Grid(r.kind, r.tw, r.th, [(d["entry_tile"] - 3, -40, d["entry_tile"] + 3, 0)])
+    for rp in d.get("ropes", []): g.ropes.append((rp[0], rp[1], rp[1] + rp[2]))
+    rest = [m for m in d["marks"] if m[0] == "rest"][0]
+    res = {}
+    for s in (1.0, 0.8, 0.65):
+        st = wp.Stats(s, False)
+        _, _, a = wp.reach(g, st, [(d["entry_tile"] * T, 6 * T, True)], [(rest[1] - 24, rest[2] - 6, rest[1] + 24, rest[2] + 2)], want={0})
+        _, _, b = wp.reach(g, st, [(rest[1], rest[2], False)], [((d["entry_tile"] - 2) * T, -400, (d["entry_tile"] + 2) * T, 2 * T)], want={0}, max_states=9000)
+        res[s] = 0 in a and 0 in b
+        if not res[s]: break
+    return dict(file=os.path.basename(path), kind="room", name=d["name"], passes=res[1.0], p80=res.get(0.8, False), p65=res.get(0.65, False),
+                ropes=len(d.get("ropes", [])), platforms=sum(row.count("2") for row in d["tiles"]))
+
 def check_room(path):
-    d = json.load(open(path)); r, _ = load_room(path); r.meta = meta_for(d, r)
+    d = json.load(open(path)); r, _ = load_room(path)
+    if d.get("final"): return check_final(path, d, r)
+    r.meta = meta_for(d, r)
     res = {}
     for s in (1.0, 0.8, 0.65):
         ok, _ = wg.check(r, s, False); res[s] = ok
@@ -33,10 +50,28 @@ def check_shaft(path):
         out[s] = (0 in got) and (0 in got2)
     return dict(file=os.path.basename(path), kind="shaft", name=d["name"], passes=out[1.0], p80=out[0.8], p65=False, ropes=0, platforms=0)
 
-def job(p): return check_shaft(p) if "shaft_" in p else check_room(p)
+def check_wing(path):
+    """A wing: from its doorway to its scroll / key / guardian and back, with no abilities."""
+    d = json.load(open(path)); r, _ = load_room(path)
+    tw, th, fr = d["tw"], d["th"], d["floor_row"]
+    g = wp.Grid(r.kind, tw, th, [])
+    sx = (6 if d["door_side"] < 0 else tw - 7) * T; sy = fr * T
+    goal = [p for p in d["props"] if p["t"] in ("key", "guardian")] or d["props"] or [dict(x=m[1], y=m[2]) for m in d["marks"] if m[0] == "rest"]     # a lantern shrine: its lantern
+    gx, gy = goal[0]["x"], goal[0]["y"]
+    res = {}
+    for s_ in (1.0, 0.8):
+        st = wp.Stats(s_, False)
+        _, _, a = wp.reach(g, st, [(sx, sy, False)], [(gx - 10, gy - 8, gx + 10, gy + 2)], want={0}, max_states=9000)
+        _, _, b = wp.reach(g, st, [(gx, gy, False)], [(sx - 12, sy - 8, sx + 12, sy + 2)], want={0}, max_states=9000)
+        res[s_] = (0 in a) and (0 in b)
+    return dict(file=os.path.basename(path), kind="wing", name=d["name"], passes=res[1.0], p80=res[0.8], p65=False, ropes=0, platforms=0)
+
+def job(p):
+    if "shaft_" in p: return check_shaft(p)
+    return check_wing(p) if "wing_" in p else check_room(p)
 
 if __name__ == "__main__":
-    files = sorted(glob.glob("data/world/[0-9]*.json")) + sorted(glob.glob("data/world/shaft_*.json"))
+    files = sorted(glob.glob("data/world/[0-9]*.json")) + sorted(glob.glob("data/world/shaft_*.json")) + sorted(glob.glob("data/world/wing_*.json"))
     t0 = time.time()
     with Pool(8) as pool: results = pool.map(job, files, chunksize=1)
     bad = [r for r in results if not r["passes"]]

@@ -7,7 +7,9 @@ extends CharacterBody2D
 
 signal landed
 signal pounded(at: Vector2)  ## ground pound hit the floor (breaks cracked floors)
-signal ate
+signal healed_self
+signal hit(from_x: float)  ## the hero was hurt (health is already reduced)
+signal swung(hitbox: Rect2, dir: int)  ## the bamboo stick reached its strike: world rectangle it covers
 
 const SIZE := Vector2(10, 14)
 const RUN := 110.0
@@ -31,18 +33,27 @@ const CELL := 24
 const ANIMS := [
 	["idle", 8, 7.0, true], ["run", 8, 15.0, true], ["jump", 2, 10.0, false], ["apex", 1, 1.0, false],
 	["fall", 2, 8.0, true], ["land", 2, 16.0, false], ["wall", 2, 6.0, true], ["climb", 4, 9.0, true], ["dash", 2, 20.0, true],
-	["ascend", 4, 5.0, true], ["pound", 2, 14.0, true], ["eat", 3, 6.0, true],
+	["ascend", 4, 5.0, true], ["pound", 2, 14.0, true], ["eat", 3, 6.0, true], ["swing", 4, 26.0, false],
 ]
-const DOUBLE_JUMP_V := 230.0
+const DOUBLE_JUMP_V := 277.0  ## second jump: ~45% higher (and farther) than the first version's 230
 const POUND_V := 460.0
-const EAT_TIME := 1.0
-const FAST_EAT_TIME := 0.3
+const HEAL_TIME := 1.0
+const FAST_HEAL_TIME := 0.3
+const POUND_COOLDOWN := 4.0
+const IFRAME_COOLDOWN := 3.0  ## the dash is invincible at most once every 3 seconds
 const LAND_TIME := 0.12
+const HURT_STUN := 0.28  ## control is lost for this long after a hit
+const HURT_IFRAMES := 1.3
+const STOMP_BOUNCE := 230.0
+const SWING_TIME := 0.2       ## the slash and its afterglow; the hero can move all the way through it
+const SWING_COOLDOWN := 0.3   ## from one slash to the next (Hollow Knight's nail is 0.41, its quick slash 0.25)
+const SWING_HIT_AT := 0.0     ## the stick lands on the very first frame: no wind-up
+const SWING_RECOIL := 140.0   ## a sideways slash that hits something pushes the hero back a little
 
 var facing := 1
 var input_enabled := true
 var world: World  ## set by the game; used to find ropes and vines
-var vitals: VitalsState  ## set by the game; abilities and food live here
+var vitals: VitalsState  ## set by the game; abilities, health and energy live here
 var frozen := false  ## a cutscene (the upgrade ascension) moves the hero instead of physics
 var invincible := false  ## true while dashing once INVINCIBLE DASH is learned
 
@@ -63,7 +74,19 @@ var _climb_moving := false
 var _dj_used := false
 var _pounding := false
 var _eat_t := 0.0
+var _pound_cool := 0.0
+var _iframe_cool := 0.0
+var _dash_invincible := false
 var _streamer: AbilityFx.Streamer
+var _hurt_t := 0.0
+var _swing_t := -1.0  ## time since the swing began; below 0 when not swinging
+var _swing_cool := 0.0
+var _swing_hit_done := false
+var _swing_up := false        ## this slash goes up (up was held when it began)
+var _swing_alt := false       ## sideways slashes alternate: over the top and down, then from below and up
+var _last_swing := -9.0
+var _stick: BambooStick
+var _inv_t := 0.0
 
 
 func _init() -> void:
@@ -78,6 +101,9 @@ func _init() -> void:
 	shape.position = Vector2(0, -SIZE.y / 2.0)
 	add_child(shape)
 	z_index = 10
+	_stick = BambooStick.new()
+	_stick.player = self
+	add_child(_stick)
 	_sprite = AnimatedSprite2D.new()
 	_sprite.sprite_frames = _build_frames()
 	_sprite.centered = false
@@ -102,27 +128,148 @@ static func _build_frames() -> SpriteFrames:
 	return frames
 
 
+func is_swinging() -> bool:
+	return _swing_t >= 0.0
+
+
+## 0..1 through the current swing.
+func swing_progress() -> float:
+	return clampf(_swing_t / SWING_TIME, 0.0, 1.0)
+
+
+## The stick follows the hero's flicker after a hit.
+func stick_modulate() -> Color:
+	return Color(1, 1, 1, _sprite.modulate.a)
+
+
+## The bamboo stick: a short swing in front of the hero, on the ground or in the air. Movement carries on; facing is held.
+func _update_swing(delta: float) -> void:
+	_swing_cool = maxf(0.0, _swing_cool - delta)
+	if is_swinging():
+		_swing_t += delta
+		if not _swing_hit_done and _swing_t >= SWING_HIT_AT:
+			_swing_hit_done = true
+			swung.emit(stick_hitbox(), facing)
+		if _swing_t >= SWING_TIME:
+			_swing_t = -1.0
+	elif _ctl() and Input.is_action_just_pressed("attack") and _swing_cool <= 0.0 and _dash_left <= 0.0 and not _pounding and _eat_t <= 0.0:
+		_swing_t = 0.0
+		_swing_cool = SWING_COOLDOWN
+		_swing_hit_done = false
+		_swing_up = Input.is_action_pressed("move_up")
+		_swing_alt = not _swing_alt if _time - _last_swing < 0.6 else false
+		_last_swing = _time
+		_sprite.play("swing")
+		_sprite.frame = 1                # straight into the lunge: no wind-up
+
+
+## What the stick covers at its strike, in world pixels: a long box in front of the hero from the feet to above the head, or
+## (an up-slash) a box over the head.
+func stick_hitbox() -> Rect2:
+	if _swing_up:
+		return Rect2(global_position.x - 14.0, global_position.y - 50.0, 28.0, 30.0)
+	var x0 := global_position.x + (2.0 if facing > 0 else -32.0)
+	return Rect2(x0, global_position.y - 26.0, 30.0, 26.0)
+
+
+func swing_up() -> bool:
+	return _swing_up
+
+
+func swing_alt() -> bool:
+	return _swing_alt
+
+
+## The slash hit something: a sideways one pushes the hero back from it (Hollow Knight's nail recoil).
+func recoil() -> void:
+	if _swing_up or frozen:
+		return
+	velocity.x = -facing * SWING_RECOIL
+	_wall_lock = maxf(_wall_lock, 0.08)
+
+
+## Whether the player's keys move the hero: not during a cutscene or the moment after a hit.
+func _ctl() -> bool:
+	return input_enabled and _hurt_t <= 0.0
+
+
+func is_pounding() -> bool:
+	return _pounding
+
+
+## Something hurt the hero from the side of `from_x`: one crystal, a short knock back, then a moment of safety.
+## Returns false when nothing happened (the invincible dash, the moment after a hit, a cutscene).
+func take_hit(from_x: float) -> bool:
+	if vitals == null or frozen or invincible or _inv_t > 0.0 or vitals.health <= 0:
+		return false
+	vitals.hurt(1)
+	_inv_t = HURT_IFRAMES
+	_hurt_t = HURT_STUN
+	_wall_lock = HURT_STUN
+	var away := 1.0 if global_position.x >= from_x else -1.0
+	velocity = Vector2(away * 130.0, -170.0)
+	_climbing = false
+	_pounding = false
+	_dash_left = 0.0
+	_swing_t = -1.0
+	hit.emit(from_x)
+	return true
+
+
+## Springs off something stepped on: a hop upward, and the air moves are given back.
+func bounce() -> void:
+	velocity.y = -STOMP_BOUNCE
+	_pounding = false
+	_dj_used = false
+	_dash_used = false
+	_coyote = 0.0
+	_sprite.play("jump")
+
+
+## A lizard's tongue caught the hero: pulled toward `to_x` for a moment, out of control (no crystal lost; the bite does that).
+func yank(to_x: float, speed: float) -> bool:
+	if frozen or invincible or _inv_t > 0.0 or _hurt_t > 0.0 or vitals == null or vitals.health <= 0:
+		return false
+	velocity = Vector2((1.0 if to_x > global_position.x else -1.0) * speed, -110.0)
+	_hurt_t = 0.3
+	_wall_lock = 0.3
+	_climbing = false
+	_pounding = false
+	_dash_left = 0.0
+	_swing_t = -1.0
+	return true
+
+
+func grant_invincibility(seconds: float) -> void:
+	_inv_t = maxf(_inv_t, seconds)
+
+
 func _has(ability: String) -> bool:
 	return vitals != null and bool(vitals.unlocked.get(ability, false))
 
 
 func _physics_process(delta: float) -> void:
 	_time += delta
+	_hurt_t = maxf(0.0, _hurt_t - delta)
+	_inv_t = maxf(0.0, _inv_t - delta)
 	if frozen:
 		_sprite.flip_h = facing < 0
 		return
-	var dir := Input.get_axis("move_left", "move_right") if input_enabled else 0.0
-	var jump_pressed := input_enabled and Input.is_action_just_pressed("jump")
-	var jump_held := input_enabled and Input.is_action_pressed("jump")
-	var dash_pressed := input_enabled and Input.is_action_just_pressed("dash")
-	if dir != 0.0:
+	var dir := Input.get_axis("move_left", "move_right") if _ctl() else 0.0
+	var jump_pressed := _ctl() and Input.is_action_just_pressed("jump")
+	var jump_held := _ctl() and Input.is_action_pressed("jump")
+	var dash_pressed := _ctl() and Input.is_action_just_pressed("dash")
+	if dir != 0.0 and not is_swinging():
 		facing = 1 if dir > 0.0 else -1
-	var up := input_enabled and Input.is_action_pressed("move_up")
-	var down := input_enabled and Input.is_action_pressed("pound")
+	var up := _ctl() and Input.is_action_pressed("move_up")
+	var down := _ctl() and Input.is_action_pressed("pound")
 	if _climbing:
 		_climb(delta, dir, up, down, jump_pressed, dash_pressed)
 		return
-	# Eat (hold): turns one food pip into one crystal; FAST HEAL makes it nearly instant.
+	_pound_cool = maxf(0.0, _pound_cool - delta)
+	_iframe_cool = maxf(0.0, _iframe_cool - delta)
+	_update_swing(delta)
+	# Heal (hold, with a full energy circle): restores one crystal; FAST HEAL makes it nearly instant.
 	if _try_eat(delta, dir):
 		return
 	# Ground pound: straight down, fast, breaks cracked floors.
@@ -139,8 +286,9 @@ func _physics_process(delta: float) -> void:
 		if not rope.is_empty() and ((up and global_position.y > float(rope["top"]) + 12.0) or (down and global_position.y < float(rope["bottom"]) - 2.0)):
 			_grab(rope)
 			return
-	if input_enabled and Input.is_action_just_pressed("pound") and _has("pound") and not is_on_floor() and _dash_left <= 0.0:
+	if _ctl() and Input.is_action_just_pressed("pound") and _has("pound") and not is_on_floor() and _dash_left <= 0.0 and _pound_cool <= 0.0:
 		_pounding = true
+		_pound_cool = POUND_COOLDOWN
 		return
 
 	if is_on_floor():
@@ -157,8 +305,11 @@ func _physics_process(delta: float) -> void:
 	if dash_pressed and _dash_left <= 0.0 and _dash_cool <= 0.0 and not _dash_used:
 		_dash_left = DASH_TIME
 		_dash_cool = DASH_COOLDOWN + DASH_TIME
+		_dash_invincible = _has("dash_iframes") and _iframe_cool <= 0.0
+		if _dash_invincible:
+			_iframe_cool = IFRAME_COOLDOWN
 		_dash_used = not is_on_floor()
-	invincible = _dash_left > 0.0 and _has("dash_iframes")
+	invincible = _dash_left > 0.0 and _dash_invincible
 	if _dash_left <= 0.0 and _streamer != null and is_instance_valid(_streamer):
 		_streamer.finish()
 		_streamer = null
@@ -235,6 +386,8 @@ func _animate() -> void:
 		anim = "pound"
 	elif _dash_left > 0.0:
 		anim = "dash"
+	elif is_swinging():
+		anim = "swing"
 	elif is_on_floor():
 		if _land_left > 0.0:
 			anim = "land"
@@ -252,11 +405,14 @@ func _animate() -> void:
 		_sprite.play(anim)
 	_sprite.flip_h = facing < 0
 	_sprite.modulate = Color(0.75, 1.0, 1.0) if invincible else Color.WHITE
+	if _inv_t > 0.0 and int(_time * 24.0) % 2 == 0:
+		_sprite.modulate.a = 0.35   # flicker while safe after a hit
 
 
 ## The upgrade ascension: the game moves the hero and shows the floating pose.
 func set_frozen(value: bool) -> void:
 	frozen = value
+	_swing_t = -1.0
 	velocity = Vector2.ZERO
 	_climbing = false
 	_pounding = false
@@ -266,21 +422,32 @@ func set_frozen(value: bool) -> void:
 
 
 func _try_eat(delta: float, dir: float) -> bool:
-	var wants := input_enabled and Input.is_action_pressed("eat") and is_on_floor() and dir == 0.0 and vitals != null \
-			and vitals.food > 0 and vitals.health < vitals.max_health
+	var wants := _ctl() and Input.is_action_pressed("eat") and is_on_floor() and dir == 0.0 and vitals != null \
+			and vitals.energy_full() and vitals.health < vitals.max_health
 	if not wants:
 		_eat_t = 0.0
+		if vitals != null:
+			vitals.heal_progress = 0.0
 		return false
 	_eat_t += delta
+	var need := FAST_HEAL_TIME if _has("fast_heal") else HEAL_TIME
+	vitals.heal_progress = clampf(_eat_t / need, 0.0, 1.0)
 	velocity = Vector2.ZERO
-	if _eat_t >= (FAST_EAT_TIME if _has("fast_heal") else EAT_TIME):
+	if _eat_t >= need:
 		_eat_t = 0.0
-		vitals.eat(-1)
-		vitals.heal(1)
-		ate.emit()
+		vitals.heal_progress = 0.0
+		vitals.spend_energy_heal()
+		healed_self.emit()
 	move_and_slide()
 	_after_move()
 	return true
+
+
+## 0..1: how recharged an ability is (1 = ready). "pound" or "dash_iframes".
+func cooldown_fraction(ability: String) -> float:
+	if ability == "pound":
+		return 1.0 - _pound_cool / POUND_COOLDOWN
+	return 1.0 - _iframe_cool / IFRAME_COOLDOWN
 
 
 func _grab(rope: Dictionary) -> void:
@@ -313,6 +480,10 @@ func _climb(delta: float, dir: float, up: bool, down: bool, jump_pressed: bool, 
 		return
 	var vy := (CLIMB_SPEED if down else 0.0) - (CLIMB_SPEED if up else 0.0)
 	_climb_moving = vy != 0.0
+	if world != null and ((up and position.y <= float(_rope["top"]) + 11.0) or (down and position.y >= float(_rope["bottom"]) - 1.0)):
+		var next := world.rope_at(global_position + Vector2(0, -22.0 if up else 8.0))
+		if not next.is_empty() and next != _rope and absf(float(next["x"]) - float(_rope["x"])) < 4.0:
+			_rope = next
 	var top := float(_rope["top"]) + 10.0
 	var bottom := float(_rope["bottom"])
 	var step := clampf(position.y + vy * delta, top, bottom) - position.y
@@ -328,6 +499,8 @@ func _climb(delta: float, dir: float, up: bool, down: bool, jump_pressed: bool, 
 
 
 func respawn_at(pos: Vector2) -> void:
+	_hurt_t = 0.0
+	_swing_t = -1.0
 	_climbing = false
 	_pounding = false
 	position = pos

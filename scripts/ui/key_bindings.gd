@@ -1,18 +1,22 @@
 class_name KeyBindings
 extends RefCounted
 ## Rebindable gameplay keys, saved to user://bindings.cfg and applied to the InputMap.
-## Each action has one rebindable key; arrow keys always also move left and right.
+## Each action has one rebindable key, any key but Esc. By default the bamboo stick is the left arrow and the dash the right arrow
+## (the movement keys are A, D, W and S); the up and down arrows do nothing until bound. Menus, the map and
+## the inventory follow the movement keys (left / right / up and the pound key for down), so whatever the player binds to move
+## also moves through every menu.
 
 const PATH := "user://bindings.cfg"
-const ACTIONS: Array[String] = ["move_left", "move_right", "move_up", "jump", "dash", "pound", "eat", "interact", "inventory", "map", "full_map", "pause"]
+const ACTIONS: Array[String] = ["move_left", "move_right", "move_up", "jump", "attack", "dash", "pound", "eat", "interact", "inventory", "map", "full_map", "pause"]
 const LABELS := {
 	"move_left": "MOVE LEFT",
 	"move_right": "MOVE RIGHT",
 	"move_up": "CLIMB UP",
 	"jump": "JUMP / DOUBLE JUMP",
+	"attack": "BAMBOO STICK",
 	"dash": "DASH",
 	"pound": "POUND / CLIMB DOWN",
-	"eat": "EAT AND HEAL",
+	"eat": "HEAL",
 	"interact": "INTERACT",
 	"inventory": "INVENTORY",
 	"map": "QUICK MAP",
@@ -24,7 +28,8 @@ const DEFAULTS := {
 	"move_right": KEY_D,
 	"move_up": KEY_W,
 	"jump": KEY_SPACE,
-	"dash": KEY_SHIFT,
+	"attack": KEY_LEFT,
+	"dash": KEY_RIGHT,
 	"pound": KEY_S,
 	"eat": KEY_F,
 	"interact": KEY_E,
@@ -33,10 +38,12 @@ const DEFAULTS := {
 	"full_map": KEY_M,
 	"pause": KEY_ESCAPE,
 }
-const FIXED := {"move_left": KEY_LEFT, "move_right": KEY_RIGHT, "move_up": KEY_UP, "pound": KEY_DOWN}
-const RESERVED: Array[Key] = [KEY_ESCAPE, KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN]
+const RESERVED: Array[Key] = [KEY_ESCAPE]   ## the arrow keys are free to bind like any other; they just do nothing until the player binds them
+## The menu directions, each following one movement key.
+const UI_FOLLOW := {"ui_left": "move_left", "ui_right": "move_right", "ui_up": "move_up", "ui_down": "pound"}
 
 static var keys: Dictionary = {}
+static var _names: Dictionary = {}  ## action -> label, so the label is not looked up every frame it is drawn
 
 
 static func setup() -> void:
@@ -49,14 +56,25 @@ static func setup() -> void:
 
 
 static func apply() -> void:
+	_names.clear()
 	for action in ACTIONS:
 		if InputMap.has_action(action):
 			InputMap.action_erase_events(action)
 		else:
 			InputMap.add_action(action)
 		_add_key(action, keys[action])
-		if FIXED.has(action):
-			_add_key(action, FIXED[action])
+	for ui in UI_FOLLOW:     # menus: drop every key (the arrows included), then follow the movement key
+		if not InputMap.has_action(ui):
+			InputMap.add_action(ui)
+		for ev in InputMap.action_get_events(ui):
+			if ev is InputEventKey:
+				InputMap.action_erase_event(ui, ev)
+		_add_key(ui, keys[UI_FOLLOW[ui]])
+
+
+## "WASD" with the default keys: the four movement keys in the order up, left, down, right.
+static func direction_keys() -> String:
+	return key_name("move_up") + key_name("move_left") + key_name("pound") + key_name("move_right")
 
 
 static func _add_key(action: String, key: Key) -> void:
@@ -73,6 +91,14 @@ static func save() -> void:
 
 
 static func key_name(action: String) -> String:
+	if _names.has(action):
+		return _names[action]
+	var label := _lookup_name(action)
+	_names[action] = label
+	return label
+
+
+static func _lookup_name(action: String) -> String:
 	var physical: Key = keys[action]
 	var label := OS.get_keycode_string(DisplayServer.keyboard_get_keycode_from_physical(physical))
 	if label == "":

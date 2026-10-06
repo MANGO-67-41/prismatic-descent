@@ -11,6 +11,7 @@ const BASE_HEALTH := 6
 const MAX_HEALTH := 11
 const SHARDS_PER_CRYSTAL := 2
 const MAX_SHARDS := (MAX_HEALTH - BASE_HEALTH) * SHARDS_PER_CRYSTAL
+const ENERGY_TIME := 30.0
 
 ## Order the abilities are granted: one on entering each region from region 2 on.
 const ABILITY_ORDER: Array[String] = ["pound", "double_jump", "dash_iframes", "fast_heal"]
@@ -18,13 +19,17 @@ const ABILITY_ORDER: Array[String] = ["pound", "double_jump", "dash_iframes", "f
 var max_health := BASE_HEALTH
 var health := BASE_HEALTH
 var shards := 0
-var max_food := 6
-var food := 4
+## Energy: a circle that fills over ENERGY_TIME seconds. When full, holding Heal spends it to restore one crystal.
+var energy := 0.0
+var heal_progress := 0.0  ## 0..1 while the hero is channelling a heal (drawn around the circle)
 var currency := 0
 var region := "THE OVERGROWTH"
 var completion := 0
 var unlocked: Dictionary = {"pound": false, "double_jump": false, "dash_iframes": false, "fast_heal": false}
-var items: Dictionary = {}
+var items: Dictionary = {}  ## "key_0" .. "key_3": the region keys collected
+var guardians: Dictionary = {}  ## "g_0" .. "g_4": guardians defeated
+var doors: Dictionary = {}  ## gate ids already opened
+var read_scrolls: Dictionary = {}  ## scroll ids already read
 
 
 func hurt(amount: int) -> void:
@@ -59,9 +64,21 @@ func add_shard() -> void:
 	changed.emit()
 
 
-func eat(amount: int) -> void:
-	food = clampi(food + amount, 0, max_food)
-	changed.emit()
+func tick_energy(delta: float) -> void:
+	energy = minf(1.0, energy + delta / ENERGY_TIME)
+
+
+func energy_full() -> bool:
+	return energy >= 1.0
+
+
+## Spends a full circle on one crystal. Returns false if the circle is not full or health is already full.
+func spend_energy_heal() -> bool:
+	if not energy_full() or health >= max_health:
+		return false
+	energy = 0.0
+	heal(1)
+	return true
 
 
 func add_currency(amount: int) -> void:

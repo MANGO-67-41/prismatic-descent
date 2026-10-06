@@ -5,7 +5,9 @@ extends Node2D
 
 const KEEP_X := 640.0
 const KEEP_Y := 520.0
+const BEAM_H := 4  ## thickness in pixels of beam platforms (BEAM_H in dev/overgrowth_art.py)
 
+var game: Game  ## set by the game: the props (scrolls, keys, gates, guardians) talk to it
 var _nodes: Dictionary = {}  ## piece id -> Node2D
 var _ropes: Dictionary = {}  ## piece id -> Array of {x, top, bottom} in world pixels
 var _shapes: Dictionary = {}  ## "wxh" -> RectangleShape2D, shared
@@ -104,6 +106,17 @@ func _build(i: int) -> void:
 		cs.shape = _shapes[key]
 		cs.position = Vector2(int(r[0]) * WorldData.TILE + w / 2.0, int(r[1]) * WorldData.TILE + h / 2.0)
 		body.add_child(cs)
+	for b in p.get("beams", []):  # thin bars sprouting from walls: only the top BEAM_H pixels of the tile are solid
+		var bw := int(b[2]) * WorldData.TILE
+		var bkey := "%dx%d" % [bw, BEAM_H]
+		if not _shapes.has(bkey):
+			var bshape := RectangleShape2D.new()
+			bshape.size = Vector2(bw, BEAM_H)
+			_shapes[bkey] = bshape
+		var bcs := CollisionShape2D.new()
+		bcs.shape = _shapes[bkey]
+		bcs.position = Vector2(int(b[0]) * WorldData.TILE + bw / 2.0, int(b[1]) * WorldData.TILE + BEAM_H / 2.0)
+		body.add_child(bcs)
 	if bool(p["first"]):  # the very first room is open to the sky: keep the hero from leaving through the top
 		var lid := CollisionShape2D.new()
 		var s := RectangleShape2D.new()
@@ -142,8 +155,39 @@ func _build(i: int) -> void:
 		var mark := RestMark.new()
 		mark.position = Vector2(float(rest[0]), float(rest[1]))
 		node.add_child(mark)
+	if game != null:
+		for prop in p.get("props", []):
+			var made := _make_prop(prop, i, node.position)
+			if made != null:
+				node.add_child(made)
+		for c in p.get("creatures", []):     # rebuilt with the room: killed creatures are back next time
+			var cr := CreatureTypes.make(str(c["t"]))
+			cr.piece_id = i
+			cr.setup(c, game, WorldData.rect(i))
+			node.add_child(cr)
 	add_child(node)
 	_nodes[i] = node
+
+
+func _make_prop(prop: Dictionary, id: int, origin: Vector2) -> Node2D:
+	match str(prop["t"]):
+		"scroll":
+			var ped := Pedestal.new()
+			ped.setup(prop, game)
+			return ped
+		"key":
+			var altar := KeyAltar.new()
+			altar.setup(prop, game)
+			return altar
+		"door":
+			var door := GateDoor.new()
+			door.setup(prop, game)
+			return door
+		"guardian":
+			var guardian := Guardian.new()
+			guardian.setup(prop, game, origin, id)
+			return guardian
+	return null
 
 
 ## Paints over smashed cracked tiles so the hole shows (the baked art still has the floor there).
