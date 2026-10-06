@@ -4,7 +4,6 @@ extends Node2D
 ## (HUD, inventory, map, pause). Enemies come later.
 
 const TITLE_SCENE := "res://scenes/ui/title_screen.tscn"
-const DEMO_KEYS: Array[Key] = [KEY_H, KEY_K, KEY_U, KEY_G, KEY_T, KEY_C, KEY_R]
 const REST_REACH := Vector2(20, 26)
 ## The ability each region gives the first time the hero enters it (region index -> ability id).
 const REGION_ABILITY := ["", "pound", "double_jump", "dash_iframes", "fast_heal", ""]
@@ -122,9 +121,11 @@ func _spawn() -> void:
 	var s: Array = first["start"][0]
 	start = Vector2(float(first["x"]) + float(s[0]), float(first["y"]) + float(s[1]))
 	rest_pos = start
+	var resumed := false
 	if not progress.is_empty():
-		start = progress["pos"]
 		rest_pos = progress["rest_pos"] if progress["rest_pos"] != Vector2.ZERO else start
+		resumed = rest_pos != start
+		start = rest_pos            # leaving the world and coming back: they wake at the last lantern, not where they stood
 		for id in progress["rooms"]:
 			discovered[int(id)] = true
 		for a in progress.get("abilities", []):
@@ -144,6 +145,9 @@ func _spawn() -> void:
 	piece = maxi(WorldData.piece_at(start - Vector2(0, 7), 0), 0)
 	world.update_focus(player.position, true)
 	_enter_piece(piece)
+	if resumed:                     # a lantern heals: they wake with every crystal, and the corner says where
+		vitals.heal(vitals.max_health)
+		area_title.show_area(LANTERN_ROOM, WorldMap.REGIONS[int(WorldData.pieces[piece]["region"])]["colour"])
 	cam.follow(WorldData.rect(piece), player.position, WorldData.pieces[piece]["kind"] == "shaft", 1.0)
 
 
@@ -404,9 +408,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		handler = _interact
 	elif event.is_action_pressed("ui_cancel"):
 		handler = _on_cancel
-	elif OS.is_debug_build() and event is InputEventKey and event.pressed and not event.echo \
-			and (event as InputEventKey).keycode in DEMO_KEYS:
-		handler = _demo_key.bind((event as InputEventKey).keycode)
 	else:
 		return
 	# Mark handled before acting: _on_cancel may change scene, after which get_viewport() is null.
@@ -460,21 +461,3 @@ func _on_cancel() -> void:
 func _go_title() -> void:
 	_save()
 	get_tree().change_scene_to_file(TITLE_SCENE)
-
-
-func _demo_key(keycode: Key) -> void:
-	match keycode:
-		KEY_H:
-			vitals.hurt(1)
-		KEY_K:
-			vitals.hurt(2)
-		KEY_U:
-			vitals.heal(1)
-		KEY_G:
-			vitals.add_shard()
-		KEY_T:
-			vitals.energy = 1.0
-		KEY_C:
-			vitals.add_currency(25)
-		KEY_R:
-			vitals.unlock_next()

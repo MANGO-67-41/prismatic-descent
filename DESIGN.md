@@ -106,6 +106,7 @@ The world grew by 15 **wing rooms** built onto the sides of main rooms (a doorwa
 - Check: `dev/world_verify.py` also walks each wing from its doorway to its goal and back; `dev/test_story.gd` plays the whole chain.
 
 ## Resting places
+Leaving the world (Esc, quit to menu) saves the profile, and coming back puts the hero at the last lantern they rested at, not where they stood: healed, with the corner reading NOW ENTERING / LANTERN ROOM (a profile that has never rested resumes at the start). Checked by `dev/test_resume.gd`. The old debug keys (H hurt, K, G shard, T energy, C currency, R unlock the next ability) are gone from the game; they live only in the separate `ui_preview` scene.
 A lantern heals the hero fully (interact), sets the place they wake after a fall, and makes every creature lose them for 6 seconds. There is one in each region's ruin hall and three more in the lantern shrines (the shrine wings are lanterns and nothing else), one in the Prismatic Lake's temple and, from `dev/make_rests.py`, three more in every region's main rooms (the third, the sixth, the eighth and the last room), so no region has more than two or three rooms between lanterns. Creatures keep 7 tiles clear of them.
 
 ## Creatures
