@@ -218,7 +218,9 @@ func _initialize() -> void:
 		var shards0 := game.vitals.shards
 		await _frames(150)
 		_check("the fallen guardian is recorded and the boss bar goes", bool(game.vitals.guardians.get("g_0", false)) and not game.boss_bar.visible)
-		_check("a guardian leaves a crystal shard behind", game.vitals.shards == shards0 + 1 or game.vitals.shards >= 1)
+		_check("the shard moment plays", game.shard_screen.is_playing() or game.vitals.shards == shards0 + 1)
+		await _frames(150)
+		_check("a guardian leaves a crystal shard behind (it lands in the HUD)", game.vitals.shards == shards0 + 1)
 	game.queue_free()
 	await process_frame
 	SaveSlots.erase(4)

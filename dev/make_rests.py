@@ -1,4 +1,6 @@
-"""Adds resting lanterns to the main rooms: every region already had one (the sixth room) and one in its ruin hall; this adds
+"""NO LONGER USED: every lantern in the main rooms was removed again (dev/world_remove_main_rests.py); only the old halls, the lantern shrines
+and the lake have lanterns now. Do not run this.
+Adds resting lanterns to the main rooms: every region already had one (the sixth room) and one in its ruin hall; this adds
 more, in the third, eighth and last room of each region (the last is the one before the gate), so a lantern is never more than
 two or three rooms away. Each goes on a flat stretch of floor away from the holes, ropes, cracks, scrolls and the entrance.
 Safe to run again (rooms that already have one are left alone). Run: python3 dev/make_rests.py

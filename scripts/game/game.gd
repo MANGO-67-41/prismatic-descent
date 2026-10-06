@@ -23,6 +23,7 @@ var scroll_reader: ScrollReader
 var toast: Toast
 var boss_bar: BossBar
 var death_screen: DeathScreen
+var shard_screen: ShardScreen
 var dying := false  ## the fade out and back in after the hero's last crystal breaks
 var _fade_rect: ColorRect
 var _region_idx := -1
@@ -104,6 +105,8 @@ func _build_ui() -> void:
 	ui.add_child(pause_menu)
 	death_screen = DeathScreen.new()
 	ui.add_child(death_screen)
+	shard_screen = ShardScreen.new()
+	ui.add_child(shard_screen)
 	_fade_rect = ColorRect.new()
 	_fade_rect.color = Color(UITheme.INK, 0.0)
 	_fade_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -168,7 +171,7 @@ func _process(delta: float) -> void:
 	world_map.set_player(player.position, piece)
 	if not in_ceremony:
 		vitals.tick_energy(delta)
-	player.input_enabled = not (inventory.is_open or world_map.is_full() or pause_menu.is_open or in_ceremony or scroll_reader.is_open or dying)
+	player.input_enabled = not (inventory.is_open or world_map.is_full() or pause_menu.is_open or in_ceremony or scroll_reader.is_open or dying or shard_screen.is_playing())
 	_check_region_gift()
 	# footsteps: running on the ground makes a little noise every few strides (the blind crypt lizard hunts by it)
 	if player.is_on_floor() and absf(player.velocity.x) > 40.0 and not player.frozen:
@@ -298,10 +301,21 @@ func open_door(id: String) -> void:
 
 func guardian_defeated(id: String, region: int) -> void:
 	vitals.guardians[id] = true
-	vitals.add_shard()
 	var left := 5 - vitals.guardians.size()
-	toast.show_message(StoryData.REGIONS[region] + " GUARDIAN FALLEN", StoryData.COLOURS[region],
-			"THE SEAL ABOVE THE LAKE WILL OPEN" if left == 0 else "%d OF 5 GUARDIANS BROKEN" % vitals.guardians.size())
+	var sub_text := "THE SEAL ABOVE THE LAKE WILL OPEN" if left == 0 else "%d OF 5 GUARDIANS BROKEN" % vitals.guardians.size()
+	var after := func() -> void:
+		toast.show_message(StoryData.REGIONS[region] + " GUARDIAN FALLEN", StoryData.COLOURS[region], sub_text)
+		_save()
+	if vitals.shards >= VitalsState.MAX_SHARDS:
+		after.call()
+		return
+	# the shard moment: the shard is added as it lands in the HUD, the toast follows
+	var completes := (vitals.shards + 1) % VitalsState.SHARDS_PER_CRYSTAL == 0
+	var target := hud.pip_center(vitals.max_health) if completes else hud.circle_center()
+	shard_screen.finished.connect(after, CONNECT_ONE_SHOT)
+	shard_screen.play(completes, target, func() -> void:
+		vitals.add_shard()
+		_save())
 	_save()
 
 
@@ -391,6 +405,8 @@ func _exit_tree() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if shard_screen.is_playing():
+		return                      # the shard moment is short: no menus over it
 	if in_ceremony:
 		if ceremony.banner > 0.9 and (event.is_action_pressed("jump") or event.is_action_pressed("interact")) and _ceremony_tween:
 			_ceremony_tween.set_speed_scale(4.0)
@@ -435,7 +451,7 @@ func _toggle_inventory() -> void:
 
 
 func _interact() -> void:
-	if inventory.is_open or pause_menu.is_open or world_map.is_full() or scroll_reader.is_open or dying:
+	if inventory.is_open or pause_menu.is_open or world_map.is_full() or scroll_reader.is_open or dying or shard_screen.is_playing():
 		return
 	for node in get_tree().get_nodes_in_group("interactable"):
 		if node.has_method("can_interact") and node.can_interact(player.global_position):

@@ -79,6 +79,16 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
+## Where the shard circle is, and where crystal number `index` (0-based) sits in the row (the shard animation flies to these).
+func circle_center() -> Vector2:
+	return Vector2(MARGIN.x + 14.0, size.y - MARGIN.y - 18.0)
+
+
+func pip_center(index: int) -> Vector2:
+	var c := circle_center()
+	return Vector2(c.x + 26.0 + index * PIP_PITCH + (6.0 if index >= VitalsState.BASE_HEALTH else 0.0) + PIP_R, c.y + 2.0)
+
+
 func _draw() -> void:
 	if state == null:
 		return

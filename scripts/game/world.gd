@@ -202,18 +202,101 @@ class HoleMask extends Node2D:
 
 ## A bench-like glow where the hero can rest (E): a cream diamond that breathes.
 class RestMark extends Node2D:
+	## The resting lantern, drawn in pixels: a stone foot, a steel frame with glass panes lit from within, a flame that sways and flickers,
+	## a pagoda roof (gold on its lit side, red-brown in shadow, steel ribs) and a ring on top; a soft warm light round it and a few
+	## sparks rising. The position is the middle of its foot on the floor.
+	const INK := Color("120d14")
+	const STEEL := Color("a8aeba")
+	const STEEL_MID := Color("747a88")
+	const STEEL_DARK := Color("484c58")
+	const ROOF_LIT := Color("f4b650")
+	const ROOF_MID := Color("e0902e")
+	const ROOF_HOT := Color("ffe08a")
+	const ROOF_SHADE := Color("8a3a1a")
+	const ROOF_DEEP := Color("5a2410")
+	const GLOW_OUTER := Color("e8872a")
+	const GLOW_MID := Color("f6b04a")
+	const GLOW_INNER := Color("fcd26a")
+	const FLAME := Color("fff0b0")
+	const STONE := [Color("a0a4a8"), Color("74787e"), Color("4a4e54")]
 	var _t := 0.0
 
 	func _process(delta: float) -> void:
 		_t += delta
 		queue_redraw()
 
+	func _r(x: float, y: float, w: float, h: float, c: Color) -> void:
+		draw_rect(Rect2(x, y, w, h), c)
+
 	func _draw() -> void:
-		var glow := 0.55 + 0.45 * sin(_t * 2.4)
-		draw_rect(Rect2(-9, -3, 18, 3), Color("5a2a22"))
-		draw_rect(Rect2(-9, -4, 18, 1), Color("a8512d"))
-		Glyphs.draw_diamond(self, Vector2(0, -12), 4, Color(UITheme.CREAM, 0.55 + 0.45 * glow))
-		Glyphs.draw_diamond(self, Vector2(0, -12), 2, Color(1, 1, 1, glow))
+		var flick := 0.5 + 0.5 * sin(_t * 7.0) * sin(_t * 3.1 + 1.0)
+		for ring in [[26, 0.05], [18, 0.07], [11, 0.1]]:               # the light it throws, in three flat bands
+			var rad: int = ring[0]
+			for dy in range(-rad, rad + 1):
+				var half := int(sqrt(float(rad * rad - dy * dy)))
+				_r(-half, -14 + dy, half * 2, 1, Color(GLOW_MID, float(ring[1]) * (0.75 + 0.5 * flick)))
+		# the stone foot and the ledge
+		_r(-9, -5, 19, 6, INK)
+		_r(-8, -4, 17, 4, STONE[1])
+		_r(-8, -4, 17, 1, STONE[0])
+		_r(-8, -1, 17, 1, STONE[2])
+		for xx in range(-8, 9):
+			for yy in range(-3, -1):
+				if (xx * 7 + yy * 13) % 5 == 0:
+					_r(xx, yy, 1, 1, STONE[2] if (xx + yy) % 2 == 0 else STONE[0])
+		_r(-8, -7, 17, 3, INK)
+		_r(-7, -6, 15, 1, STEEL)
+		_r(-7, -5, 15, 1, STEEL_MID)
+		# the glass, a glow from top to bottom brightest in the middle
+		_r(-7, -20, 15, 14, INK)
+		for yy in range(-18, -6):
+			var t := float(yy + 18) / 11.0
+			for xx in range(-5, 6):
+				var c := GLOW_OUTER.lerp(GLOW_MID, t)
+				c = c.lerp(GLOW_INNER, (1.0 - absf(xx) / 6.0) * t * 0.8)
+				_r(xx, yy, 1, 1, c)
+		# the flame: a teardrop that sways and flickers
+		var sway := roundi(sin(_t * 5.0) * 0.6)
+		var rows := [5, 5, 4, 4, 3, 2, 2, 1]
+		var top := 6 + int(flick * 2.0)
+		for i in mini(top, rows.size()):
+			var w: int = rows[i]
+			var y := -8 - i
+			var lean := sway if i >= 4 else 0
+			_r(-w / 2 + lean, y, w, 1, GLOW_INNER)
+			if w >= 3:
+				_r(-(w - 2) / 2 + lean, y, w - 2, 1, FLAME)
+		_r(sway if top >= 6 else 0, -8 - mini(top, rows.size()), 1, 1, Color.WHITE)         # the white tip
+		# the frame: posts, rails
+		for post in [[-6, STEEL_DARK], [-5, STEEL_MID], [-3, STEEL_MID], [3, STEEL_MID], [5, STEEL_MID], [6, STEEL_DARK]]:
+			_r(post[0], -18, 1, 12, post[1])
+		_r(-6, -19, 13, 1, STEEL)
+		_r(-6, -7, 13, 1, STEEL_DARK)
+		# the roof: nine rows widening to the eaves, lit on the left, shadowed on the right, ribs along both edges
+		_r(-11, -22, 23, 2, INK)
+		for i in 9:
+			var half := 1 + i + (1 if i >= 7 else 0)
+			var y := -29 + i
+			_r(-half - 1, y, half * 2 + 3, 1, INK)
+			for xx in range(-half, half + 1):
+				var u := float(xx) / float(half)
+				var c := ROOF_LIT if u < -0.25 else (ROOF_MID if u < 0.3 else (ROOF_SHADE if u < 0.8 else ROOF_DEEP))
+				if i == 0:
+					c = ROOF_HOT
+				_r(xx, y, 1, 1, c)
+			_r(-half, y, 1, 1, STEEL)
+			_r(half, y, 1, 1, STEEL_MID)
+		_r(-10, -20, 21, 1, STEEL_DARK)
+		# the neck and the ring
+		_r(-1, -32, 2, 3, INK)
+		_r(-1, -31, 2, 2, STEEL_MID)
+		for px in [Vector2(-1, -37), Vector2(0, -37), Vector2(-2, -36), Vector2(1, -36), Vector2(-2, -35), Vector2(1, -35), Vector2(-2, -34), Vector2(1, -34)]:
+			_r(px.x, px.y, 1, 1, STEEL if px.x < 0 else STEEL_MID)
+		# sparks rising from the flame
+		for k in 3:
+			var ph := fmod(_t * 0.55 + k * 0.33, 1.0)
+			var sx := roundi(sin(_t * 2.0 + k * 2.1) * 3.0)
+			_r(sx, -22 - ph * 16.0, 1, 1, Color(GLOW_INNER, (1.0 - ph) * 0.9))
 
 
 ## A climbable rope (or vine in the Overgrowth) hanging from a ceiling or platform. It sways a little; logic ignores the sway.
